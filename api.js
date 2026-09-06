@@ -84,7 +84,7 @@ async function listRoutes(q) {
     ...(q.status === 'management_closed' ? [['r.management_closed_at IS NOT NULL', 1]] : []),
     ...(q.status === 'pending_review' ? [['r.completed_at IS NOT NULL AND r.management_closed_at IS NULL', 1]] : []),
   ]);
-  const limit = Math.min(parseInt(q.limit || '100', 10) || 100, 500);
+  const limit = Math.min(parseInt(q.limit || '100', 10) || 100, 5000);
   const offset = parseInt(q.offset || '0', 10) || 0;
   const rows = await db.all(
     `SELECT r.*,
@@ -118,18 +118,45 @@ async function getRouteByToken(token) {
 }
 
 async function getRouteByPlate(plate) {
-  const route = await db.get(
-    `SELECT * FROM routes WHERE UPPER(plate) = UPPER(?) AND completed_at IS NULL
-     ORDER BY started_at DESC NULLS LAST LIMIT 1`,
+  // Como agora dá pra pré-lançar a rota de um dia futuro com antecedência, pode existir mais
+  // de uma rota (de dias diferentes) pra mesma placa ao mesmo tempo. Por isso, primeiro tenta
+  // achar a rota cujo dia de validade é HOJE — é essa que o motorista deve ver. Só se não
+  // houver nenhuma de hoje é que cai pra "a mais recente" (ex: comprovante de uma rota
+  // concluída mais cedo, ou uma rota futura pré-lançada antes da hora).
+  const todayRoute = await db.get(
+    `SELECT * FROM routes WHERE UPPER(plate) = UPPER(?) AND date(started_at) = date(?) ORDER BY started_at DESC LIMIT 1`,
+    [plate, new Date().toISOString()]
+  );
+  const route = todayRoute || await db.get(
+    `SELECT * FROM routes WHERE UPPER(plate) = UPPER(?) ORDER BY started_at DESC NULLS LAST LIMIT 1`,
     [plate]
   );
   if (!route) return null;
+  if (route.completed_at) {
+    const sameDay = await db.get('SELECT (date(?) = date(?)) AS same_day', [route.started_at, new Date().toISOString()]);
+    if (!sameDay || !sameDay.same_day) return null;
+  }
   return getRoute(route.id);
 }
 
 async function createRoute(body) {
   const token = crypto.randomUUID();
   const startedAt = body.started_at || new Date().toISOString();
+  // uma mesma placa não pode ter duas rotas no mesmo dia (o dia de validade da programação,
+  // escolhido no lançamento) — evita duplicidade de informação.
+  const dup = await db.get(
+    'SELECT id FROM routes WHERE UPPER(plate) = UPPER(?) AND date(started_at) = date(?) LIMIT 1',
+    [body.plate, startedAt]
+  );
+  if (dup) {
+    const [y, m, d] = startedAt.slice(0, 10).split('-');
+    const dateLabel = y && m && d ? `${d}/${m}/${y}` : startedAt;
+    const err = new Error(
+      `A placa ${body.plate} já tem uma rota lançada para o dia ${dateLabel} (rota #${dup.id}). Cada placa só pode ter uma rota por dia.`
+    );
+    err.statusCode = 409;
+    throw err;
+  }
   const row = await db.get(
     `INSERT INTO routes (id, driver_name, plate, notes, started_at, update_token)
      VALUES (nextval('routes_id_seq'), ?, ?, ?, ?, ?) RETURNING id`,
@@ -223,7 +250,7 @@ async function listArrivals(q) {
     ['date(arrived_at) >= date(?)', q.date_from],
     ['date(arrived_at) <= date(?)', q.date_to],
   ]);
-  const limit = Math.min(parseInt(q.limit || '100', 10) || 100, 1000);
+  const limit = Math.min(parseInt(q.limit || '100', 10) || 100, 10000);
   const offset = parseInt(q.offset || '0', 10) || 0;
   const rows = await db.all(
     `SELECT * FROM arrivals ${where.sql} ORDER BY arrived_at DESC NULLS LAST LIMIT ? OFFSET ?`,
@@ -239,7 +266,11 @@ async function getArrival(id) {
 
 async function createArrival(body) {
   const arrivedAt = body.arrived_at || new Date().toISOString();
-  const { deviation_minutes, status } = computeStatus(body.scheduled_at, arrivedAt);
+  const { scheduled_at, deviation_minutes, status } = computeStatus(arrivedAt);
+  // tempo da perna: sempre calculado a partir da saída do HUB/base anterior até a chegada.
+  const travelMinutes = body.hub_departed_at
+    ? Math.round((new Date(arrivedAt).getTime() - new Date(body.hub_departed_at).getTime()) / 60000)
+    : null;
   const row = await db.get(
     `INSERT INTO arrivals
       (id, route_id, journey_id, driver_name, plate, base, origin_base, leg_number,
@@ -259,7 +290,7 @@ async function createArrival(body) {
       body.base,
       body.origin_base || 'HUB PRINCIPAL',
       body.leg_number || 1,
-      body.scheduled_at || null,
+      scheduled_at,
       arrivedAt,
       deviation_minutes,
       status,
@@ -275,7 +306,7 @@ async function createArrival(body) {
       body.unloading_delay_reason || null,
       body.unloading_delay_details || null,
       body.hub_departed_at || null,
-      body.travel_minutes ?? null,
+      travelMinutes,
       body.hub_latitude ?? null,
       body.hub_longitude ?? null,
       body.hub_accuracy_meters ?? null,
@@ -407,7 +438,7 @@ async function listBagEvents(q) {
     ['date_key = ?', q.date_key],
     ['base = ?', q.base],
   ]);
-  return db.all(`SELECT * FROM bag_events ${where.sql} ORDER BY occurred_at DESC NULLS LAST LIMIT 500`, where.params);
+  return db.all(`SELECT * FROM bag_events ${where.sql} ORDER BY occurred_at DESC NULLS LAST LIMIT 5000`, where.params);
 }
 
 async function listClosures(q) {
