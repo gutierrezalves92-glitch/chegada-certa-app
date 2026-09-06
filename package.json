@@ -1,0 +1,17 @@
+{
+  "name": "chegada-certa",
+  "version": "2.0.0",
+  "description": "Reconstrução do app Chegada Certa (rastreio de rotas, chegadas e malotes) a partir do backup de dados — versão para hospedagem em nuvem (Postgres/Supabase).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node lib/seed.js",
+    "seed:force": "node lib/seed.js --force"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "pg": "^8.13.0"
+  }
+}
