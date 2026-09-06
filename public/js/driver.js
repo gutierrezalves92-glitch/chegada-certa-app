@@ -165,7 +165,7 @@ function render() {
 
   let actionHtml = '';
   if (route.completed_at) {
-    actionHtml = `<div class="sheet"><h3>✅ Rota concluída</h3><p class="muted">Concluída em ${fmtDT(route.completed_at)}. Nenhuma ação pendente.</p></div>`;
+    actionHtml = receiptHtml(firstJourney);
   } else if (openJourney) {
     actionHtml = arrivalFormHtml(openJourney);
   } else if (plannedMode) {
@@ -188,7 +188,7 @@ function render() {
   appEl.innerHTML = `
     ${timerHtml}
     ${itineraryHtml}
-    ${history ? `<div class="sheet"><h3>Histórico da rota</h3>${history}</div>` : ''}
+    ${history && !route.completed_at ? `<div class="sheet"><h3>Histórico da rota</h3>${history}</div>` : ''}
     ${actionHtml}
     ${!route.completed_at && !openJourney && !plannedMode ? `<button class="bigbtn secondary" id="btn-finish-route">Concluir rota</button>` : ''}
     ${!tokenFromUrl ? `<button class="bigbtn secondary" id="btn-troca-placa">Trocar placa</button>` : ''}
@@ -214,6 +214,28 @@ function render() {
     tick();
     if (!route.completed_at) timerHandle = setInterval(tick, 1000);
   }
+}
+
+// comprovante final: mostrado quando a rota é concluída (última perna registrada) —
+// horário de saída do HUB principal e o horário de chegada em cada base.
+function receiptHtml(firstJourney) {
+  const rows = route.arrivals
+    .slice()
+    .sort((a, b) => (a.leg_number || 0) - (b.leg_number || 0))
+    .map(
+      (a) => `<div class="status-line"><span>${a.leg_number}. ${a.origin_base} → ${a.base}</span>
+        <span>${fmtDT(a.arrived_at)} <span class="pill ${a.status}">${a.status === 'late' ? 'atrasado' : 'no horário'}</span></span></div>`
+    )
+    .join('');
+  return `<div class="sheet">
+    <h3>✅ Comprovante da rota #${route.id}</h3>
+    <div class="status-line"><span>Motorista</span><span>${route.driver_name}</span></div>
+    <div class="status-line"><span>Placa</span><span>${route.plate}</span></div>
+    <div class="status-line"><span>Saída do HUB PRINCIPAL</span><span>${firstJourney ? fmtDT(firstJourney.started_at) : '—'}</span></div>
+    <div class="status-line"><span>Rota concluída em</span><span>${fmtDT(route.completed_at)}</span></div>
+    <h4 style="margin:14px 0 4px;font-size:12.5px;color:#64748b;text-transform:uppercase;letter-spacing:.03em;">Chegadas por perna</h4>
+    ${rows || '<p class="muted">Nenhuma chegada registrada.</p>'}
+  </div>`;
 }
 
 function nextLegNumber() {
