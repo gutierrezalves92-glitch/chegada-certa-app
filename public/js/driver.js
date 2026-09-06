@@ -39,6 +39,17 @@ function fileToBase64(file) {
 
 let route = null;
 let plate = null;
+let timerHandle = null;
+
+function fmtElapsed(ms) {
+  if (!Number.isFinite(ms) || ms < 0) ms = 0;
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
 
 // ---------------------------------------------------------------- boot / identificação
 
@@ -118,6 +129,16 @@ function render() {
 
   const plannedMode = Array.isArray(route.stops) && route.stops.length > 0;
   const openJourney = route.journeys.find((j) => !j.completed_at);
+  const sortedJourneys = route.journeys.slice().sort((a, b) => (a.leg_number || 0) - (b.leg_number || 0));
+  const firstJourney = sortedJourneys[0] || null;
+
+  let timerHtml = '';
+  if (firstJourney) {
+    timerHtml = `<div class="sheet timer-sheet">
+      <div class="timer-box"><div class="label">Tempo total da rota</div><div class="value" id="timer-overall">00:00:00</div></div>
+      <div class="timer-box"><div class="label">Tempo desta perna</div><div class="value" id="timer-leg">${openJourney ? '00:00:00' : '—'}</div></div>
+    </div>`;
+  }
 
   const history = route.arrivals
     .slice()
@@ -165,12 +186,34 @@ function render() {
   }
 
   appEl.innerHTML = `
+    ${timerHtml}
     ${itineraryHtml}
     ${history ? `<div class="sheet"><h3>Histórico da rota</h3>${history}</div>` : ''}
     ${actionHtml}
     ${!route.completed_at && !openJourney && !plannedMode ? `<button class="bigbtn secondary" id="btn-finish-route">Concluir rota</button>` : ''}
     ${!tokenFromUrl ? `<button class="bigbtn secondary" id="btn-troca-placa">Trocar placa</button>` : ''}
   `;
+
+  // temporizador ao vivo: tempo total da rota (desde a saída do HUB) e tempo da perna atual.
+  // sempre reinicia o intervalo anterior para nunca acumular vários tickers rodando juntos.
+  if (timerHandle) {
+    clearInterval(timerHandle);
+    timerHandle = null;
+  }
+  if (firstJourney) {
+    const overallStartMs = new Date(firstJourney.started_at).getTime();
+    const legStartMs = openJourney ? new Date(openJourney.started_at).getTime() : null;
+    const frozenAtMs = route.completed_at ? new Date(route.completed_at).getTime() : null;
+    const tick = () => {
+      const nowMs = frozenAtMs || Date.now();
+      const overallEl = document.getElementById('timer-overall');
+      if (overallEl) overallEl.textContent = fmtElapsed(nowMs - overallStartMs);
+      const legEl = document.getElementById('timer-leg');
+      if (legEl && legStartMs != null) legEl.textContent = fmtElapsed(nowMs - legStartMs);
+    };
+    tick();
+    if (!route.completed_at) timerHandle = setInterval(tick, 1000);
+  }
 }
 
 function nextLegNumber() {
@@ -196,7 +239,6 @@ function arrivalFormHtml(journey) {
   return `
     <div class="sheet">
       <h3>Registrar chegada em ${journey.base}</h3>
-      <div class="field"><label>Horário agendado (opcional)</label><input type="datetime-local" id="ar-scheduled" /></div>
       <div class="field"><label>A base estava aberta?</label>
         <div class="toggle-group">
           <button type="button" id="btn-open-yes" onclick="setBaseOpen(true)">Sim</button>
@@ -290,7 +332,6 @@ async function registerArrival() {
   btn.disabled = true;
   document.getElementById('ar-gps').textContent = 'obtendo localização...';
   const coords = await getPosition();
-  const scheduledLocal = document.getElementById('ar-scheduled').value;
   const photoFile = document.getElementById('ar-photo').files[0];
 
   const body = {
@@ -301,7 +342,6 @@ async function registerArrival() {
     base: journey.base,
     origin_base: journey.origin_base,
     leg_number: journey.leg_number,
-    scheduled_at: scheduledLocal ? new Date(scheduledLocal).toISOString() : null,
     driver_update_token: tokenFromUrl || undefined,
     latitude: coords?.latitude,
     longitude: coords?.longitude,
