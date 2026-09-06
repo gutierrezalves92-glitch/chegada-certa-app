@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chegada Certa — Motorista</title>
+<link rel="stylesheet" href="/css/style.css" />
+<style>
+  body { background: #0f172a; }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 18px 16px 60px; }
+  .brand { text-align:center; color: #f1f5f9; padding: 22px 0 6px; }
+  .brand h1 { margin:0; font-size:19px; }
+  .sheet { background: white; border-radius: 14px; padding: 18px; margin-top: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+  .sheet h3 { margin-top:0; }
+  .field { margin-bottom: 12px; }
+  .field label { display:block; font-size:12.5px; color:#64748b; margin-bottom:5px; }
+  .field input, .field select, .field textarea { width:100%; padding:10px; border:1px solid #e2e8f0; border-radius:8px; font-size:15px; }
+  .bigbtn { width:100%; padding:14px; border-radius:10px; border:none; background:#0f766e; color:white; font-size:15.5px; font-weight:600; margin-top:6px; }
+  .bigbtn.secondary { background:#f1f5f9; color:#0f172a; }
+  .bigbtn:disabled { opacity:.5; }
+  .gps { font-size:12.5px; color:#64748b; margin-top:6px; }
+  .status-line { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f1f5f9; font-size:13.5px; }
+  .toggle-group { display:flex; gap:8px; }
+  .toggle-group button { flex:1; padding:10px; border-radius:8px; border:1px solid #e2e8f0; background:white; }
+  .toggle-group button.on { background:#0f766e; color:white; border-color:#0f766e; }
+  #msg { text-align:center; color:#fecaca; font-size:13px; min-height: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <h1>📦 Chegada Certa</h1>
+    <div id="route-title" class="muted" style="color:#cbd5e1;font-size:13px;"></div>
+  </div>
+  <div id="msg"></div>
+  <div id="app"></div>
+</div>
+<script src="/js/driver.js"></script>
+</body>
+</html>

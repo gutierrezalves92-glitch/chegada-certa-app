@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chegada Certa — Painel de Gestão</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <h1>📦 Chegada Certa <small>painel de gestão</small></h1>
+  <div>
+    <input id="operatorEmail" placeholder="seu e-mail (operador)" style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:13px;width:230px" />
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="tabs">
+    <button data-view="overview" class="active">Visão geral</button>
+    <button data-view="routes">Rotas</button>
+    <button data-view="arrivals">Chegadas</button>
+    <button data-view="bagloads">Cargas de malote</button>
+    <button data-view="closures">Fechamento de ciclo</button>
+    <button data-view="fleet">Escala da frota</button>
+    <button data-view="driverlink">Link do motorista</button>
+  </nav>
+
+  <main>
+    <!-- OVERVIEW -->
+    <section class="view active" id="view-overview">
+      <h2 class="view-title">Visão geral</h2>
+      <div class="toolbar">
+        <label class="muted">De</label>
+        <input type="date" id="ov-from" />
+        <label class="muted">até</label>
+        <input type="date" id="ov-to" />
+        <button onclick="loadOverview()">Filtrar</button>
+      </div>
+      <div class="cards" id="ov-cards"></div>
+      <h3>Bases com mais atrasos</h3>
+      <table>
+        <thead><tr><th>Base</th><th>Chegadas</th><th>Atrasos</th><th>Desvio médio (min)</th></tr></thead>
+        <tbody id="ov-bases"></tbody>
+      </table>
+    </section>
+
+    <!-- ROUTES -->
+    <section class="view" id="view-routes">
+      <h2 class="view-title">Rotas</h2>
+      <div class="toolbar">
+        <input type="date" id="rt-date" />
+        <input type="text" id="rt-driver" placeholder="motorista..." />
+        <input type="text" id="rt-plate" placeholder="placa..." />
+        <select id="rt-status">
+          <option value="">todos os status</option>
+          <option value="open">em andamento</option>
+          <option value="completed">concluídas</option>
+          <option value="pending_review">aguardando revisão</option>
+          <option value="management_closed">fechadas pela gestão</option>
+        </select>
+        <button onclick="loadRoutes()">Filtrar</button>
+        <button class="secondary" onclick="clearRouteFilters()">Limpar</button>
+      </div>
+      <table>
+        <thead><tr><th>ID</th><th>Motorista</th><th>Placa</th><th>Início</th><th>Pernas</th><th>Chegadas</th><th>Atrasos</th><th>Status</th></tr></thead>
+        <tbody id="rt-rows"></tbody>
+      </table>
+      <div class="pagination" id="rt-pagination"></div>
+    </section>
+
+    <!-- ARRIVALS -->
+    <section class="view" id="view-arrivals">
+      <h2 class="view-title">Chegadas</h2>
+      <div class="toolbar">
+        <select id="ar-base"><option value="">todas as bases</option></select>
+        <select id="ar-status">
+          <option value="">todos os status</option>
+          <option value="on_time">no horário</option>
+          <option value="late">atrasado</option>
+          <option value="early">adiantado</option>
+        </select>
+        <input type="text" id="ar-driver" placeholder="motorista..." />
+        <input type="date" id="ar-from" />
+        <input type="date" id="ar-to" />
+        <button onclick="loadArrivals()">Filtrar</button>
+        <button class="secondary" onclick="clearArrivalFilters()">Limpar</button>
+      </div>
+      <table>
+        <thead><tr><th>ID</th><th>Base</th><th>Motorista</th><th>Agendado</th><th>Chegada</th><th>Desvio</th><th>Status</th><th>Foto</th></tr></thead>
+        <tbody id="ar-rows"></tbody>
+      </table>
+      <div class="pagination" id="ar-pagination"></div>
+    </section>
+
+    <!-- BAG LOADS -->
+    <section class="view" id="view-bagloads">
+      <h2 class="view-title">Cargas de malote por base/dia</h2>
+      <div class="toolbar">
+        <input type="date" id="bl-date" />
+        <button onclick="loadBagLoads()">Filtrar</button>
+        <button onclick="openBagLoadForm()">+ Registrar carga</button>
+      </div>
+      <table>
+        <thead><tr><th>Data</th><th>Base</th><th>Malotes carregados</th><th>Operador</th><th>Atualizado em</th></tr></thead>
+        <tbody id="bl-rows"></tbody>
+      </table>
+    </section>
+
+    <!-- CLOSURES -->
+    <section class="view" id="view-closures">
+      <h2 class="view-title">Fechamento de ciclo (reconciliação diária)</h2>
+      <div class="toolbar">
+        <input type="date" id="cl-date" />
+        <button onclick="checkClosure()">Consultar dia</button>
+        <button onclick="doClosure('close')">Fechar dia</button>
+        <button class="secondary" onclick="doClosure('reopen')">Reabrir dia</button>
+      </div>
+      <div id="cl-status" class="card" style="max-width:420px"></div>
+      <h3>Histórico de eventos de malote</h3>
+      <table>
+        <thead><tr><th>Data</th><th>Base</th><th>Evento</th><th>Malotes (antes → depois)</th><th>Operador</th><th>Ocorrido em</th></tr></thead>
+        <tbody id="be-rows"></tbody>
+      </table>
+    </section>
+
+    <!-- FLEET -->
+    <section class="view" id="view-fleet">
+      <h2 class="view-title">Escala da frota</h2>
+      <div class="toolbar">
+        <input type="date" id="fl-date" />
+        <button onclick="loadFleet()">Filtrar</button>
+        <button onclick="openFleetForm()">+ Escalar veículo</button>
+      </div>
+      <table>
+        <thead><tr><th>Data</th><th>Placa</th><th>Operador</th><th>Atualizado em</th></tr></thead>
+        <tbody id="fl-rows"></tbody>
+      </table>
+    </section>
+
+    <!-- DRIVER LINK -->
+    <section class="view" id="view-driverlink">
+      <h2 class="view-title">Gerar link para o motorista</h2>
+      <p class="muted">Cria uma nova rota e gera o link exclusivo (token) que o motorista abre no celular para registrar as chegadas — sem precisar de login.</p>
+      <div class="modal" style="max-width:420px; box-shadow:none; border:1px solid #e2e8f0;">
+        <div class="field"><label>Nome do motorista</label><input type="text" id="dl-driver" style="width:100%;padding:8px" /></div>
+        <div class="field"><label>Placa do veículo</label><input type="text" id="dl-plate" style="width:100%;padding:8px" /></div>
+        <div class="field"><label>Observações (opcional)</label><input type="text" id="dl-notes" style="width:100%;padding:8px" /></div>
+        <button class="btn" onclick="createDriverRoute()">Gerar link</button>
+        <div id="dl-result" style="margin-top:14px"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="modal-root"></div>
+
+<script src="/js/dashboard.js"></script>
+</body>
+</html>
