@@ -363,6 +363,135 @@ async function createDriverRoute() {
   }
 }
 
+// ---------------------------------------------------------------- lançamento em massa (planilha)
+// Fluxo: o operador cola linhas copiadas do Excel/Sheets (separadas por tab) ou anexa um .csv
+// (separado por ; ou ,). Nada é lançado sem antes mostrar uma prévia pro operador conferir —
+// como não existe "desfazer rota", evitamos criar dados errados em massa por engano.
+
+let bulkRows = [];
+
+function detectDelimiter(line) {
+  const counts = { '\t': (line.match(/\t/g) || []).length, ';': (line.match(/;/g) || []).length, ',': (line.match(/,/g) || []).length };
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+}
+
+function splitDelimitedLine(line, delim) {
+  return line.split(delim).map((c) => c.trim().replace(/^"(.*)"$/, '$1').trim());
+}
+
+function parseBrDate(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s || '').trim());
+  if (!m) return null;
+  const [, d, mo, y] = m;
+  return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+}
+
+function parseBulkRows(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.replace(/\r$/, '')).filter((l) => l.trim() !== '');
+  if (lines.length === 0) return [];
+  const delim = detectDelimiter(lines[0]);
+  let rows = lines.map((l) => splitDelimitedLine(l, delim));
+  // pula a linha de cabeçalho, se a primeira célula for "Data" (como no modelo da planilha)
+  if (rows.length && /^data$/i.test(rows[0][0] || '')) rows = rows.slice(1);
+  return rows
+    .filter((cols) => cols.some((c) => c))
+    .map((cols) => {
+      const [data, dataEntrega, transportadora, motorista, placa, perfil, chegadaHub, saidaHub, ...rest] = cols;
+      const paradas = rest.slice(0, 7).map((p) => (p || '').trim()).filter(Boolean);
+      const contato = rest[7] || '';
+      const notesParts = [];
+      if (transportadora) notesParts.push(`Transportadora: ${transportadora}`);
+      if (perfil) notesParts.push(`Perfil: ${perfil}`);
+      if (chegadaHub) notesParts.push(`Chegada no HUB (planejada): ${chegadaHub}`);
+      if (saidaHub) notesParts.push(`Saída do HUB (planejada): ${saidaHub}`);
+      if (dataEntrega) notesParts.push(`Data de entrega: ${dataEntrega}`);
+      if (contato) notesParts.push(`Contato: ${contato}`);
+      const dataIso = parseBrDate(data);
+      const horaSaida = (saidaHub || '').trim();
+      const startedAt = dataIso ? `${dataIso}T${/^\d{1,2}:\d{2}$/.test(horaSaida) ? horaSaida.padStart(5, '0') : '00:00'}:00` : undefined;
+      return {
+        driver_name: (motorista || '').trim(),
+        plate: (placa || '').trim(),
+        bases: paradas,
+        notes: notesParts.join(' · '),
+        started_at: startedAt,
+      };
+    });
+}
+
+function handleBulkFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    document.getElementById('bulk-input').value = reader.result;
+    previewBulk();
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function previewBulk() {
+  const text = document.getElementById('bulk-input').value;
+  bulkRows = parseBulkRows(text);
+  const preview = document.getElementById('bulk-preview');
+  document.getElementById('bulk-results').innerHTML = '';
+  if (bulkRows.length === 0) {
+    preview.innerHTML = '<p class="muted">Nenhuma linha reconhecida. Confira se colou as colunas certas (ou o arquivo certo).</p>';
+    return;
+  }
+  const rowsHtml = bulkRows
+    .map((r, i) => {
+      const faltando = !r.driver_name || !r.plate || r.bases.length === 0;
+      return `<tr>
+        <td>${i + 1}</td>
+        <td>${r.driver_name || '<span style="color:#b91c1c">faltando</span>'}</td>
+        <td>${r.plate || '<span style="color:#b91c1c">faltando</span>'}</td>
+        <td>${r.bases.join(' → ') || '<span style="color:#b91c1c">nenhuma parada</span>'}</td>
+        <td class="muted" style="font-size:12px">${r.notes || '—'}</td>
+        <td>${faltando ? '⚠️ dados incompletos' : 'ok'}</td>
+      </tr>`;
+    })
+    .join('');
+  preview.innerHTML = `
+    <p>${bulkRows.length} rota(s) reconhecida(s) — confira antes de lançar:</p>
+    <table><thead><tr><th>#</th><th>Motorista</th><th>Placa</th><th>Roteiro</th><th>Outras infos (vão pra observações)</th><th>Status</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+    <button class="btn" onclick="confirmBulkImport()" style="margin-top:10px">Confirmar e lançar ${bulkRows.length} rota(s)</button>`;
+}
+
+async function confirmBulkImport() {
+  const resultsEl = document.getElementById('bulk-results');
+  resultsEl.innerHTML = '<p class="muted">Lançando rotas, aguarde...</p>';
+  const results = [];
+  for (const r of bulkRows) {
+    if (!r.driver_name || !r.plate || r.bases.length === 0) {
+      results.push({ ok: false, r, error: 'Faltam dados obrigatórios (motorista, placa ou paradas).' });
+      continue;
+    }
+    try {
+      const body = { driver_name: r.driver_name, plate: r.plate, notes: r.notes, bases: r.bases };
+      if (r.started_at) body.started_at = r.started_at;
+      const route = await api('/routes', { method: 'POST', body: JSON.stringify(body) });
+      results.push({ ok: true, r, route });
+    } catch (e) {
+      results.push({ ok: false, r, error: e.message });
+    }
+  }
+  const okCount = results.filter((x) => x.ok).length;
+  resultsEl.innerHTML = `
+    <p><strong>${okCount} de ${results.length} rota(s) lançada(s) com sucesso.</strong></p>
+    <table><thead><tr><th>Motorista</th><th>Placa</th><th>Resultado</th></tr></thead><tbody>${results
+      .map(
+        (x) => `<tr><td>${x.r.driver_name || '—'}</td><td>${x.r.plate || '—'}</td><td>${
+          x.ok ? `✅ Rota #${x.route.id} lançada` : `❌ ${x.error}`
+        }</td></tr>`
+      )
+      .join('')}</tbody></table>`;
+  document.getElementById('bulk-preview').innerHTML = '';
+  document.getElementById('bulk-input').value = '';
+  bulkRows = [];
+  loadRoutes();
+}
+
 // ---------------------------------------------------------------- modal
 
 function showModal(html) {
