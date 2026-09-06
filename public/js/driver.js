@@ -1,6 +1,8 @@
-const token = new URLSearchParams(location.search).get('token');
+const params = new URLSearchParams(location.search);
+const tokenFromUrl = params.get('token'); // suporte a links antigos (com token); o fluxo novo usa placa
 const appEl = document.getElementById('app');
 const msgEl = document.getElementById('msg');
+const PLATE_KEY = 'chegada-certa:last-plate';
 
 function fmtDT(iso) {
   if (!iso) return '—';
@@ -36,23 +38,86 @@ function fileToBase64(file) {
 }
 
 let route = null;
+let plate = null;
+
+// ---------------------------------------------------------------- boot / identificação
 
 async function boot() {
-  if (!token) {
-    appEl.innerHTML = `<div class="sheet"><p>Link inválido — falta o token de acesso. Peça um novo link à gestão.</p></div>`;
+  if (tokenFromUrl) {
+    // link antigo (com token) — continua funcionando normalmente
+    try {
+      route = await api('/routes/token/' + tokenFromUrl);
+      render();
+    } catch (e) {
+      appEl.innerHTML = `<div class="sheet"><p>Não foi possível carregar esta rota (${e.message}).</p></div>`;
+    }
     return;
   }
-  try {
-    route = await api('/routes/token/' + token);
-  } catch (e) {
-    appEl.innerHTML = `<div class="sheet"><p>Não foi possível carregar esta rota (${e.message}).</p></div>`;
-    return;
+  const saved = localStorage.getItem(PLATE_KEY);
+  if (saved) {
+    const ok = await loadByPlate(saved, true);
+    if (ok) return;
   }
-  render();
+  renderPlateForm();
 }
+
+function renderPlateForm(errorMsg) {
+  document.getElementById('route-title').textContent = '';
+  appEl.innerHTML = `
+    <div class="sheet">
+      <h3>Identifique-se</h3>
+      <div class="field"><label>Placa do veículo</label><input id="plate-input" placeholder="ex: ABC1D23" autocapitalize="characters" /></div>
+      <button class="bigbtn" id="btn-find-plate">Entrar</button>
+    </div>`;
+  if (errorMsg) say(errorMsg);
+  const inp = document.getElementById('plate-input');
+  inp.focus();
+  inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') submitPlate(); });
+}
+
+async function submitPlate() {
+  const val = document.getElementById('plate-input').value.trim();
+  if (!val) return say('Digite a placa.');
+  say('Procurando rota...', false);
+  await loadByPlate(val, false);
+}
+
+async function loadByPlate(val, silent) {
+  try {
+    route = await api('/routes/by-plate/' + encodeURIComponent(val));
+    plate = val.toUpperCase();
+    localStorage.setItem(PLATE_KEY, plate);
+    say('');
+    render();
+    return true;
+  } catch (e) {
+    if (silent) {
+      localStorage.removeItem(PLATE_KEY);
+      return false;
+    }
+    renderPlateForm(e.message);
+    return false;
+  }
+}
+
+function trocarPlaca() {
+  localStorage.removeItem(PLATE_KEY);
+  route = null;
+  plate = null;
+  renderPlateForm();
+}
+
+function reloadRoute() {
+  return tokenFromUrl ? api('/routes/token/' + tokenFromUrl) : api('/routes/by-plate/' + encodeURIComponent(plate));
+}
+
+// ---------------------------------------------------------------- render
 
 function render() {
   document.getElementById('route-title').textContent = `${route.driver_name} · ${route.plate} · rota #${route.id}`;
+
+  const plannedMode = Array.isArray(route.stops) && route.stops.length > 0;
+  const openJourney = route.journeys.find((j) => !j.completed_at);
 
   const history = route.arrivals
     .slice()
@@ -63,21 +128,48 @@ function render() {
     )
     .join('');
 
-  const openJourney = route.journeys.find((j) => !j.completed_at);
+  let itineraryHtml = '';
+  if (plannedMode) {
+    const rows = route.stops
+      .map((s) => {
+        const arrived = route.arrivals.find((a) => a.leg_number === s.seq_number);
+        const isCurrent = openJourney && openJourney.leg_number === s.seq_number;
+        const icon = arrived ? '✅' : isCurrent ? '🚚' : '⏳';
+        return `<div class="status-line"><span>${icon} ${s.seq_number}. ${s.base}</span>
+          <span class="muted">${arrived ? fmtDT(arrived.arrived_at) : isCurrent ? 'a caminho' : 'pendente'}</span></div>`;
+      })
+      .join('');
+    itineraryHtml = `<div class="sheet"><h3>Roteiro (HUB PRINCIPAL → ${route.stops.map((s) => s.base).join(' → ')})</h3>${rows}</div>`;
+  }
 
   let actionHtml = '';
   if (route.completed_at) {
     actionHtml = `<div class="sheet"><h3>✅ Rota concluída</h3><p class="muted">Concluída em ${fmtDT(route.completed_at)}. Nenhuma ação pendente.</p></div>`;
   } else if (openJourney) {
     actionHtml = arrivalFormHtml(openJourney);
+  } else if (plannedMode) {
+    const pendingStop = route.stops.find((s) => s.seq_number === nextLegNumber());
+    if (pendingStop) {
+      const isFirst = nextLegNumber() === 1;
+      actionHtml = `<div class="sheet">
+        <h3>Confirmar saída ${isFirst ? 'do HUB PRINCIPAL' : ('de ' + defaultOriginBase())}</h3>
+        <p class="muted">Próxima parada: <strong>${pendingStop.base}</strong></p>
+        <button class="bigbtn" id="btn-start-leg">Capturar GPS e confirmar saída</button>
+        <div class="gps" id="leg-gps"></div>
+      </div>`;
+    } else {
+      actionHtml = `<div class="sheet"><h3>✅ Roteiro concluído</h3></div>`;
+    }
   } else {
     actionHtml = startLegFormHtml();
   }
 
   appEl.innerHTML = `
+    ${itineraryHtml}
     ${history ? `<div class="sheet"><h3>Histórico da rota</h3>${history}</div>` : ''}
     ${actionHtml}
-    ${!route.completed_at && !openJourney ? `<button class="bigbtn secondary" onclick="finishRoute()">Concluir rota</button>` : ''}
+    ${!route.completed_at && !openJourney && !plannedMode ? `<button class="bigbtn secondary" id="btn-finish-route">Concluir rota</button>` : ''}
+    ${!tokenFromUrl ? `<button class="bigbtn secondary" id="btn-troca-placa">Trocar placa</button>` : ''}
   `;
 }
 
@@ -139,15 +231,28 @@ function setBaseOpen(v) {
 }
 
 document.addEventListener('click', async (ev) => {
+  if (ev.target.id === 'btn-find-plate') return submitPlate();
   if (ev.target.id === 'btn-start-leg') return startLeg();
   if (ev.target.id === 'btn-register-arrival') return registerArrival();
+  if (ev.target.id === 'btn-finish-route') return finishRoute();
+  if (ev.target.id === 'btn-troca-placa') return trocarPlaca();
 });
 
 async function startLeg() {
   const btn = document.getElementById('btn-start-leg');
   btn.disabled = true;
   document.getElementById('leg-gps').textContent = 'obtendo localização...';
-  const dest = document.getElementById('leg-dest').value.trim();
+
+  const plannedMode = Array.isArray(route.stops) && route.stops.length > 0;
+  let dest, origin;
+  if (plannedMode) {
+    const pendingStop = route.stops.find((s) => s.seq_number === nextLegNumber());
+    dest = pendingStop ? pendingStop.base : null;
+    origin = nextLegNumber() === 1 ? 'HUB PRINCIPAL' : defaultOriginBase();
+  } else {
+    dest = document.getElementById('leg-dest').value.trim();
+    origin = document.getElementById('leg-origin').value.trim() || 'HUB PRINCIPAL';
+  }
   if (!dest) {
     say('Informe a base de destino.');
     btn.disabled = false;
@@ -162,16 +267,16 @@ async function startLeg() {
         driver_name: route.driver_name,
         plate: route.plate,
         base: dest,
-        origin_base: document.getElementById('leg-origin').value.trim() || 'HUB PRINCIPAL',
+        origin_base: origin,
         leg_number: nextLegNumber(),
-        driver_update_token: token,
+        driver_update_token: tokenFromUrl || undefined,
         start_latitude: coords?.latitude,
         start_longitude: coords?.longitude,
         start_accuracy_meters: coords?.accuracy,
       }),
     });
-    say('Perna iniciada.', false);
-    route = await api('/routes/token/' + token);
+    say('Saída confirmada.', false);
+    route = await reloadRoute();
     render();
   } catch (e) {
     say(e.message);
@@ -197,7 +302,7 @@ async function registerArrival() {
     origin_base: journey.origin_base,
     leg_number: journey.leg_number,
     scheduled_at: scheduledLocal ? new Date(scheduledLocal).toISOString() : null,
-    driver_update_token: token,
+    driver_update_token: tokenFromUrl || undefined,
     latitude: coords?.latitude,
     longitude: coords?.longitude,
     accuracy_meters: coords?.accuracy,
@@ -223,7 +328,7 @@ async function registerArrival() {
     }
     say('Chegada registrada!', false);
     baseOpenValue = null;
-    route = await api('/routes/token/' + token);
+    route = await reloadRoute();
     render();
   } catch (e) {
     say(e.message);
@@ -234,7 +339,7 @@ async function registerArrival() {
 async function finishRoute() {
   try {
     await api(`/routes/${route.id}/complete`, { method: 'PATCH' });
-    route = await api('/routes/token/' + token);
+    route = await reloadRoute();
     render();
   } catch (e) {
     say(e.message);
