@@ -386,19 +386,79 @@ function parseBrDate(s) {
   return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
 }
 
+// Remove acentos e normaliza pra facilitar comparação de nomes de coluna
+// ("Tempo de Saída Hub" -> "TEMPO DE SAIDA HUB").
+function normalizeHeader(h) {
+  return (h || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+}
+
+// Mapeia os nomes das colunas do cabeçalho pros campos da rota. As colunas de parada
+// são identificadas SOMENTE pelo nome conter "PARADA" — assim uma coluna de telefone/contato
+// (ou qualquer outra) nunca é confundida com uma parada, não importa a posição dela na planilha.
+function buildColumnMap(headerCells) {
+  const map = {
+    data: -1, dataEntrega: -1, transportadora: -1, motorista: -1,
+    placa: -1, perfil: -1, chegadaHub: -1, saidaHub: -1, contato: -1,
+  };
+  const paradaCols = [];
+  (headerCells || []).forEach((raw, idx) => {
+    const h = normalizeHeader(raw);
+    if (!h) return;
+    if (h.includes('PARADA')) {
+      const numMatch = h.match(/(\d+)/);
+      paradaCols.push({ index: idx, num: numMatch ? parseInt(numMatch[1], 10) : idx });
+    } else if (h.includes('TELEFONE') || h.includes('CONTATO') || h.includes('CELULAR') || h.includes('FONE')) {
+      map.contato = idx;
+    } else if (h.includes('ENTREGA')) {
+      map.dataEntrega = idx;
+    } else if (h === 'DATA') {
+      map.data = idx;
+    } else if (h.includes('TRANSPORTADORA')) {
+      map.transportadora = idx;
+    } else if (h.includes('MOTORISTA')) {
+      map.motorista = idx;
+    } else if (h.includes('PLACA')) {
+      map.placa = idx;
+    } else if (h.includes('PERFIL')) {
+      map.perfil = idx;
+    } else if (h.includes('CHEGADA')) {
+      map.chegadaHub = idx;
+    } else if (h.includes('SAIDA')) {
+      map.saidaHub = idx;
+    }
+  });
+  paradaCols.sort((a, b) => a.num - b.num);
+  return { map, paradaIndexes: paradaCols.map((p) => p.index) };
+}
+
 function parseBulkRows(text) {
   const lines = text.split(/\r?\n/).map((l) => l.replace(/\r$/, '')).filter((l) => l.trim() !== '');
   if (lines.length === 0) return [];
   const delim = detectDelimiter(lines[0]);
-  let rows = lines.map((l) => splitDelimitedLine(l, delim));
-  // pula a linha de cabeçalho, se a primeira célula for "Data" (como no modelo da planilha)
-  if (rows.length && /^data$/i.test(rows[0][0] || '')) rows = rows.slice(1);
-  return rows
+  const allRows = lines.map((l) => splitDelimitedLine(l, delim));
+  // A primeira linha precisa ser o cabeçalho com os nomes das colunas (ex: "Parada 1", "Parada 2",
+  // "Telefone"...) — é assim que sabemos diferenciar uma parada de qualquer outra coluna.
+  const { map, paradaIndexes } = buildColumnMap(allRows[0]);
+  const dataRows = allRows.slice(1);
+  return dataRows
     .filter((cols) => cols.some((c) => c))
     .map((cols) => {
-      const [data, dataEntrega, transportadora, motorista, placa, perfil, chegadaHub, saidaHub, ...rest] = cols;
-      const paradas = rest.slice(0, 7).map((p) => (p || '').trim()).filter(Boolean);
-      const contato = rest[7] || '';
+      const get = (idx) => (idx >= 0 ? (cols[idx] || '').trim() : '');
+      const data = get(map.data);
+      const dataEntrega = get(map.dataEntrega);
+      const transportadora = get(map.transportadora);
+      const motorista = get(map.motorista);
+      const placa = get(map.placa);
+      const perfil = get(map.perfil);
+      const chegadaHub = get(map.chegadaHub);
+      const saidaHub = get(map.saidaHub);
+      const contato = get(map.contato);
+      const paradas = paradaIndexes.map((idx) => (cols[idx] || '').trim()).filter(Boolean);
       const notesParts = [];
       if (transportadora) notesParts.push(`Transportadora: ${transportadora}`);
       if (perfil) notesParts.push(`Perfil: ${perfil}`);
@@ -407,11 +467,10 @@ function parseBulkRows(text) {
       if (dataEntrega) notesParts.push(`Data de entrega: ${dataEntrega}`);
       if (contato) notesParts.push(`Contato: ${contato}`);
       const dataIso = parseBrDate(data);
-      const horaSaida = (saidaHub || '').trim();
-      const startedAt = dataIso ? `${dataIso}T${/^\d{1,2}:\d{2}$/.test(horaSaida) ? horaSaida.padStart(5, '0') : '00:00'}:00` : undefined;
+      const startedAt = dataIso ? `${dataIso}T${/^\d{1,2}:\d{2}$/.test(saidaHub) ? saidaHub.padStart(5, '0') : '00:00'}:00` : undefined;
       return {
-        driver_name: (motorista || '').trim(),
-        plate: (placa || '').trim(),
+        driver_name: motorista,
+        plate: placa,
         bases: paradas,
         notes: notesParts.join(' · '),
         started_at: startedAt,
