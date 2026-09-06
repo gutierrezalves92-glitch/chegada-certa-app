@@ -73,6 +73,15 @@ CREATE TABLE IF NOT EXISTS arrivals (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS route_stops (
+  id BIGINT PRIMARY KEY,
+  route_id BIGINT NOT NULL,
+  seq_number INTEGER NOT NULL,
+  base TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(route_id, seq_number)
+);
+
 CREATE TABLE IF NOT EXISTS bag_loads (
   id BIGINT PRIMARY KEY,
   date_key TEXT NOT NULL,
@@ -122,6 +131,7 @@ CREATE TABLE IF NOT EXISTS fleet_schedules (
 -- sequências próprias (não usamos SERIAL porque o backup traz ids explícitos;
 -- as sequências são avançadas pelo seed depois da carga, e usadas para registros novos).
 CREATE SEQUENCE IF NOT EXISTS routes_id_seq OWNED BY routes.id;
+CREATE SEQUENCE IF NOT EXISTS route_stops_id_seq OWNED BY route_stops.id;
 CREATE SEQUENCE IF NOT EXISTS journeys_id_seq OWNED BY journeys.id;
 CREATE SEQUENCE IF NOT EXISTS arrivals_id_seq OWNED BY arrivals.id;
 CREATE SEQUENCE IF NOT EXISTS bag_loads_id_seq OWNED BY bag_loads.id;
@@ -138,3 +148,5 @@ CREATE INDEX IF NOT EXISTS idx_bagloads_date ON bag_loads(date_key);
 CREATE INDEX IF NOT EXISTS idx_bagevents_date ON bag_events(date_key);
 CREATE INDEX IF NOT EXISTS idx_fleet_date ON fleet_schedules(date_key);
 CREATE INDEX IF NOT EXISTS idx_routes_token ON routes(update_token);
+CREATE INDEX IF NOT EXISTS idx_routes_plate ON routes(plate);
+CREATE INDEX IF NOT EXISTS idx_route_stops_route ON route_stops(route_id);
