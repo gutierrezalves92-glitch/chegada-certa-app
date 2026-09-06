@@ -156,10 +156,11 @@
 
       <div class="modal" style="max-width:820px; box-shadow:none; border:1px solid #e2e8f0; margin-top:20px;">
         <h3 style="margin-top:0">Lançamento em massa (planilha)</h3>
-        <p class="muted">Selecione as linhas da sua planilha (pode incluir o cabeçalho) e cole aqui com Ctrl+C / Ctrl+V,
-          ou anexe um arquivo .csv exportado da planilha. Ordem das colunas esperada: Data, Data Entrega, Transportadora,
-          Motorista, Placa, Perfil, Chegada no HUB, Tempo de Saída Hub, Parada 1, Parada 2, Parada 3, Parada 4, Parada 5,
-          Parada 6, Parada 7, Contato.</p>
+        <p class="muted"><strong>Inclua a linha de cabeçalho</strong> (os nomes das colunas) junto com as linhas de dados —
+          selecione a partir do cabeçalho da sua planilha e cole aqui com Ctrl+C / Ctrl+V, ou anexe um arquivo .csv exportado
+          com o cabeçalho. O sistema identifica cada coluna pelo <strong>nome</strong> (não pela posição): colunas com "Parada"
+          no nome viram paradas da rota, e qualquer outra coluna (Telefone, Contato, Transportadora, Perfil, etc.) vai para as
+          observações da rota, sem se misturar com as paradas.</p>
         <div class="field">
           <label>Arquivo .csv (opcional)</label>
           <input type="file" accept=".csv,text/csv" onchange="handleBulkFile(this)" />
