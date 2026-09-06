@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+</html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -22,7 +22,7 @@
     <button data-view="bagloads">Cargas de malote</button>
     <button data-view="closures">Fechamento de ciclo</button>
     <button data-view="fleet">Escala da frota</button>
-    <button data-view="driverlink">Link do motorista</button>
+    <button data-view="driverlink">Lançar rota</button>
   </nav>
 
   <main>
@@ -139,13 +139,18 @@
 
     <!-- DRIVER LINK -->
     <section class="view" id="view-driverlink">
-      <h2 class="view-title">Gerar link para o motorista</h2>
-      <p class="muted">Cria uma nova rota e gera o link exclusivo (token) que o motorista abre no celular para registrar as chegadas — sem precisar de login.</p>
-      <div class="modal" style="max-width:420px; box-shadow:none; border:1px solid #e2e8f0;">
+      <h2 class="view-title">Lançar rota do motorista</h2>
+      <p class="muted">Cadastre a placa e a sequência de bases que o veículo vai visitar. O motorista abre <code>/driver.html</code> no celular,
+        digita a placa e vê automaticamente a próxima base — sem precisar de link exclusivo nem digitar destino.</p>
+      <div class="modal" style="max-width:460px; box-shadow:none; border:1px solid #e2e8f0;">
         <div class="field"><label>Nome do motorista</label><input type="text" id="dl-driver" style="width:100%;padding:8px" /></div>
-        <div class="field"><label>Placa do veículo</label><input type="text" id="dl-plate" style="width:100%;padding:8px" /></div>
+        <div class="field"><label>Placa do veículo</label><input type="text" id="dl-plate" style="width:100%;padding:8px" placeholder="ex: ABC1D23" /></div>
+        <div class="field">
+          <label>Bases a visitar, em ordem (uma por linha)</label>
+          <textarea id="dl-bases" rows="5" style="width:100%;padding:8px;font-family:inherit" placeholder="RJ-W-D011&#10;RJ-W-D022&#10;RJ-W-D033"></textarea>
+        </div>
         <div class="field"><label>Observações (opcional)</label><input type="text" id="dl-notes" style="width:100%;padding:8px" /></div>
-        <button class="btn" onclick="createDriverRoute()">Gerar link</button>
+        <button class="btn" onclick="createDriverRoute()">Lançar rota</button>
         <div id="dl-result" style="margin-top:14px"></div>
       </div>
     </section>
