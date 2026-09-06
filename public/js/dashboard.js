@@ -345,18 +345,22 @@ async function createDriverRoute() {
   };
   if (!body.driver_name || !body.plate) return alert('Preencha motorista e placa.');
   if (bases.length === 0) return alert('Informe ao menos uma base a visitar (uma por linha).');
-  const route = await api('/routes', { method: 'POST', body: JSON.stringify(body) });
-  const roteiro = ['HUB PRINCIPAL', ...bases].join(' → ');
-  document.getElementById('dl-result').innerHTML = `
-    <p>✅ Rota #${route.id} lançada para a placa <strong>${route.plate}</strong>.</p>
-    <p class="muted">Roteiro: ${roteiro}</p>
-    <p>Peça ao motorista para abrir <code>${location.origin}/driver.html</code> no celular e digitar a placa
-      <strong>${route.plate}</strong> — a rota aparece automaticamente, sem precisar de link exclusivo.</p>
-    <p><a href="/driver.html" target="_blank">Abrir tela do motorista →</a></p>`;
-  document.getElementById('dl-driver').value = '';
-  document.getElementById('dl-plate').value = '';
-  document.getElementById('dl-bases').value = '';
-  document.getElementById('dl-notes').value = '';
+  try {
+    const route = await api('/routes', { method: 'POST', body: JSON.stringify(body) });
+    const roteiro = ['HUB PRINCIPAL', ...bases].join(' → ');
+    document.getElementById('dl-result').innerHTML = `
+      <p>✅ Rota #${route.id} lançada para a placa <strong>${route.plate}</strong>.</p>
+      <p class="muted">Roteiro: ${roteiro}</p>
+      <p>Peça ao motorista para abrir <code>${location.origin}/driver.html</code> no celular e digitar a placa
+        <strong>${route.plate}</strong> — a rota aparece automaticamente, sem precisar de link exclusivo.</p>
+      <p><a href="/driver.html" target="_blank">Abrir tela do motorista →</a></p>`;
+    document.getElementById('dl-driver').value = '';
+    document.getElementById('dl-plate').value = '';
+    document.getElementById('dl-bases').value = '';
+    document.getElementById('dl-notes').value = '';
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 // ---------------------------------------------------------------- modal
