@@ -10,139 +10,215 @@
 <header class="topbar">
   <h1>📦 Chegada Certa <small>painel de gestão</small></h1>
   <div>
-    <input id="operatorEmail" placeholder="seu e-mail (operador)" style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:13px;width:230px" />
+    <input id="operatorEmail" placeholder="seu e-mail (operador)" />
   </div>
 </header>
 
 <div class="layout">
   <nav class="tabs">
-    <button data-view="overview" class="active">Visão geral</button>
-    <button data-view="routes">Rotas</button>
-    <button data-view="arrivals">Chegadas</button>
-    <button data-view="bagloads">Cargas de malote</button>
-    <button data-view="closures">Fechamento de ciclo</button>
-    <button data-view="fleet">Escala da frota</button>
-    <button data-view="driverlink">Lançar rota</button>
+    <button data-view="overview" class="active"><span class="tab-icon">📊</span> Visão geral</button>
+    <button data-view="routes"><span class="tab-icon">🚚</span> Rotas</button>
+    <button data-view="arrivals"><span class="tab-icon">📍</span> Chegadas</button>
+    <button data-view="bagloads"><span class="tab-icon">🎒</span> Cargas de malote</button>
+    <button data-view="closures"><span class="tab-icon">🔒</span> Fechamento de ciclo</button>
+    <button data-view="fleet"><span class="tab-icon">🚛</span> Escala da frota</button>
+    <button data-view="driverlink"><span class="tab-icon">➕</span> Lançar rota</button>
   </nav>
 
   <main>
     <!-- OVERVIEW -->
     <section class="view active" id="view-overview">
-      <h2 class="view-title">Visão geral</h2>
+      <div class="view-header">
+        <div>
+          <h2 class="view-title">Visão geral</h2>
+          <p class="view-subtitle">Resumo do desempenho da operação: pontualidade, atrasos e volume de chegadas no período selecionado.</p>
+        </div>
+      </div>
       <div class="toolbar">
-        <label class="muted">De</label>
-        <input type="date" id="ov-from" />
-        <label class="muted">até</label>
-        <input type="date" id="ov-to" />
-        <button onclick="loadOverview()">Filtrar</button>
+        <div class="field-inline"><label>De</label><input type="date" id="ov-from" /></div>
+        <div class="field-inline"><label>Até</label><input type="date" id="ov-to" /></div>
+        <div class="toolbar-actions"><button onclick="loadOverview()">Filtrar</button></div>
       </div>
       <div class="cards" id="ov-cards"></div>
-      <h3>Bases com mais atrasos</h3>
-      <table>
-        <thead><tr><th>Base</th><th>Chegadas</th><th>Atrasos</th><th>Desvio médio (min)</th></tr></thead>
-        <tbody id="ov-bases"></tbody>
-      </table>
+      <div class="section-card">
+        <h3>Bases com mais atrasos</h3>
+        <p class="section-sub">Proporção de chegadas atrasadas em cada base, no período selecionado.</p>
+        <div class="bar-list" id="ov-bases"></div>
+      </div>
     </section>
 
     <!-- ROUTES -->
     <section class="view" id="view-routes">
-      <h2 class="view-title">Rotas</h2>
-      <div class="toolbar">
-        <input type="date" id="rt-date" />
-        <input type="text" id="rt-driver" placeholder="motorista..." />
-        <input type="text" id="rt-plate" placeholder="placa..." />
-        <select id="rt-status">
-          <option value="">todos os status</option>
-          <option value="open">em andamento</option>
-          <option value="completed">concluídas</option>
-          <option value="pending_review">aguardando revisão</option>
-          <option value="management_closed">fechadas pela gestão</option>
-        </select>
-        <button onclick="loadRoutes()">Filtrar</button>
-        <button class="secondary" onclick="clearRouteFilters()">Limpar</button>
+      <div class="view-header">
+        <div>
+          <h2 class="view-title">Rotas</h2>
+          <p class="view-subtitle">Todas as rotas lançadas: motorista, placa, pernas percorridas, chegadas e atrasos.</p>
+        </div>
       </div>
-      <table>
-        <thead><tr><th>ID</th><th>Motorista</th><th>Placa</th><th>Início</th><th>Pernas</th><th>Chegadas</th><th>Atrasos</th><th>Status</th></tr></thead>
-        <tbody id="rt-rows"></tbody>
-      </table>
+      <div class="toolbar">
+        <div class="field-inline"><label>Data</label><input type="date" id="rt-date" /></div>
+        <div class="field-inline"><label>Motorista</label><input type="text" id="rt-driver" placeholder="motorista..." /></div>
+        <div class="field-inline"><label>Placa</label><input type="text" id="rt-plate" placeholder="placa..." /></div>
+        <div class="field-inline">
+          <label>Status</label>
+          <select id="rt-status">
+            <option value="">todos os status</option>
+            <option value="open">em andamento</option>
+            <option value="completed">concluídas</option>
+            <option value="pending_review">aguardando revisão</option>
+            <option value="management_closed">fechadas pela gestão</option>
+          </select>
+        </div>
+        <div class="toolbar-actions">
+          <button onclick="loadRoutes()">Filtrar</button>
+          <button class="btn secondary" onclick="clearRouteFilters()">Limpar</button>
+          <button class="btn export" onclick="exportRoutesCsv()">⬇️ Exportar CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Motorista</th><th>Placa</th><th>Início</th><th>Pernas</th><th>Chegadas</th><th>Atrasos</th><th>Status</th></tr></thead>
+          <tbody id="rt-rows"></tbody>
+        </table>
+      </div>
       <div class="pagination" id="rt-pagination"></div>
     </section>
 
     <!-- ARRIVALS -->
     <section class="view" id="view-arrivals">
-      <h2 class="view-title">Chegadas</h2>
-      <div class="toolbar">
-        <select id="ar-base"><option value="">todas as bases</option></select>
-        <select id="ar-status">
-          <option value="">todos os status</option>
-          <option value="on_time">no horário</option>
-          <option value="late">atrasado</option>
-          <option value="early">adiantado</option>
-        </select>
-        <input type="text" id="ar-driver" placeholder="motorista..." />
-        <input type="date" id="ar-from" />
-        <input type="date" id="ar-to" />
-        <button onclick="loadArrivals()">Filtrar</button>
-        <button class="secondary" onclick="clearArrivalFilters()">Limpar</button>
+      <div class="view-header">
+        <div>
+          <h2 class="view-title">Chegadas</h2>
+          <p class="view-subtitle">Todas as chegadas registradas pelos motoristas, com horário agendado, desvio e status.</p>
+        </div>
       </div>
-      <table>
-        <thead><tr><th>ID</th><th>Base</th><th>Motorista</th><th>Agendado</th><th>Chegada</th><th>Desvio</th><th>Status</th><th>Foto</th></tr></thead>
-        <tbody id="ar-rows"></tbody>
-      </table>
+      <div class="toolbar">
+        <div class="field-inline">
+          <label>Base</label>
+          <select id="ar-base"><option value="">todas as bases</option></select>
+        </div>
+        <div class="field-inline">
+          <label>Status</label>
+          <select id="ar-status">
+            <option value="">todos os status</option>
+            <option value="on_time">no horário</option>
+            <option value="late">atrasado</option>
+            <option value="early">adiantado</option>
+          </select>
+        </div>
+        <div class="field-inline"><label>Motorista</label><input type="text" id="ar-driver" placeholder="motorista..." /></div>
+        <div class="field-inline"><label>De</label><input type="date" id="ar-from" /></div>
+        <div class="field-inline"><label>Até</label><input type="date" id="ar-to" /></div>
+        <div class="toolbar-actions">
+          <button onclick="loadArrivals()">Filtrar</button>
+          <button class="btn secondary" onclick="clearArrivalFilters()">Limpar</button>
+          <button class="btn export" onclick="exportArrivalsCsv()">⬇️ Exportar CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Base</th><th>Motorista</th><th>Agendado</th><th>Chegada</th><th>Desvio</th><th>Status</th><th>Foto</th></tr></thead>
+          <tbody id="ar-rows"></tbody>
+        </table>
+      </div>
       <div class="pagination" id="ar-pagination"></div>
     </section>
 
     <!-- BAG LOADS -->
     <section class="view" id="view-bagloads">
-      <h2 class="view-title">Cargas de malote por base/dia</h2>
-      <div class="toolbar">
-        <input type="date" id="bl-date" />
-        <button onclick="loadBagLoads()">Filtrar</button>
-        <button onclick="openBagLoadForm()">+ Registrar carga</button>
+      <div class="view-header">
+        <div>
+          <h2 class="view-title">Cargas de malote por base/dia</h2>
+          <p class="view-subtitle">Quantidade de malotes carregados registrada em cada base, por dia.</p>
+        </div>
       </div>
-      <table>
-        <thead><tr><th>Data</th><th>Base</th><th>Malotes carregados</th><th>Operador</th><th>Atualizado em</th></tr></thead>
-        <tbody id="bl-rows"></tbody>
-      </table>
+      <div class="toolbar">
+        <div class="field-inline"><label>Data</label><input type="date" id="bl-date" /></div>
+        <div class="toolbar-actions">
+          <button onclick="loadBagLoads()">Filtrar</button>
+          <button class="btn secondary" onclick="openBagLoadForm()">+ Registrar carga</button>
+          <button class="btn export" onclick="exportBagLoadsCsv()">⬇️ Exportar CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Data</th><th>Base</th><th>Malotes carregados</th><th>Operador</th><th>Atualizado em</th></tr></thead>
+          <tbody id="bl-rows"></tbody>
+        </table>
+      </div>
     </section>
 
     <!-- CLOSURES -->
     <section class="view" id="view-closures">
-      <h2 class="view-title">Fechamento de ciclo (reconciliação diária)</h2>
+      <div class="view-header">
+        <div>
+          <h2 class="view-title">Fechamento de ciclo (reconciliação diária)</h2>
+          <p class="view-subtitle">Controle de abertura e fechamento do ciclo diário de reconciliação de malotes.</p>
+        </div>
+      </div>
       <div class="toolbar">
-        <input type="date" id="cl-date" />
-        <button onclick="checkClosure()">Consultar dia</button>
-        <button onclick="doClosure('close')">Fechar dia</button>
-        <button class="secondary" onclick="doClosure('reopen')">Reabrir dia</button>
+        <div class="field-inline"><label>Data</label><input type="date" id="cl-date" /></div>
+        <div class="toolbar-actions">
+          <button onclick="checkClosure()">Consultar dia</button>
+          <button onclick="doClosure('close')">Fechar dia</button>
+          <button class="btn secondary" onclick="doClosure('reopen')">Reabrir dia</button>
+        </div>
       </div>
       <div id="cl-status" class="card" style="max-width:420px"></div>
-      <h3>Histórico de eventos de malote</h3>
-      <table>
-        <thead><tr><th>Data</th><th>Base</th><th>Evento</th><th>Malotes (antes → depois)</th><th>Operador</th><th>Ocorrido em</th></tr></thead>
-        <tbody id="be-rows"></tbody>
-      </table>
+      <div class="section-card" style="margin-top:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div>
+            <h3 style="margin-bottom:2px">Histórico de eventos de malote</h3>
+            <p class="section-sub" style="margin-bottom:0">Todas as movimentações e fechamentos registrados.</p>
+          </div>
+          <button class="btn export" onclick="exportBagEventsCsv()">⬇️ Exportar CSV</button>
+        </div>
+        <div class="table-wrap" style="margin-top:14px">
+          <table>
+            <thead><tr><th>Data</th><th>Base</th><th>Evento</th><th>Malotes (antes → depois)</th><th>Operador</th><th>Ocorrido em</th></tr></thead>
+            <tbody id="be-rows"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <!-- FLEET -->
     <section class="view" id="view-fleet">
-      <h2 class="view-title">Escala da frota</h2>
-      <div class="toolbar">
-        <input type="date" id="fl-date" />
-        <button onclick="loadFleet()">Filtrar</button>
-        <button onclick="openFleetForm()">+ Escalar veículo</button>
+      <div class="view-header">
+        <div>
+          <h2 class="view-title">Escala da frota</h2>
+          <p class="view-subtitle">Placas escaladas para operar em cada dia.</p>
+        </div>
       </div>
-      <table>
-        <thead><tr><th>Data</th><th>Placa</th><th>Operador</th><th>Atualizado em</th></tr></thead>
-        <tbody id="fl-rows"></tbody>
-      </table>
+      <div class="toolbar">
+        <div class="field-inline"><label>Data</label><input type="date" id="fl-date" /></div>
+        <div class="toolbar-actions">
+          <button onclick="loadFleet()">Filtrar</button>
+          <button class="btn secondary" onclick="openFleetForm()">+ Escalar veículo</button>
+          <button class="btn export" onclick="exportFleetCsv()">⬇️ Exportar CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Data</th><th>Placa</th><th>Operador</th><th>Atualizado em</th></tr></thead>
+          <tbody id="fl-rows"></tbody>
+        </table>
+      </div>
     </section>
 
     <!-- DRIVER LINK -->
     <section class="view" id="view-driverlink">
-      <h2 class="view-title">Lançar rota do motorista</h2>
-      <p class="muted">Cadastre a placa e a sequência de bases que o veículo vai visitar. O motorista abre <code>/driver.html</code> no celular,
-        digita a placa e vê automaticamente a próxima base — sem precisar de link exclusivo nem digitar destino.</p>
-      <div class="modal" style="max-width:460px; box-shadow:none; border:1px solid #e2e8f0;">
+      <div class="view-header">
+        <div>
+          <h2 class="view-title">Lançar rota do motorista</h2>
+          <p class="view-subtitle">Cadastre a placa e a sequência de bases que o veículo vai visitar. O motorista abre <code>/driver.html</code> no
+            celular, digita a placa e vê automaticamente a próxima base — sem precisar de link exclusivo nem digitar destino.
+            Essa programação só vale para o dia escolhido abaixo: depois que o dia termina, ela deixa de valer e uma nova
+            precisa ser lançada para o dia seguinte (útil também pra já deixar a rota de amanhã pronta com antecedência).</p>
+        </div>
+      </div>
+      <div class="modal" style="max-width:460px; box-shadow:var(--shadow); border:1px solid var(--border);">
+        <div class="field"><label>Data em que esta programação é válida</label><input type="date" id="dl-date" style="width:100%;padding:8px" /></div>
         <div class="field"><label>Nome do motorista</label><input type="text" id="dl-driver" style="width:100%;padding:8px" /></div>
         <div class="field"><label>Placa do veículo</label><input type="text" id="dl-plate" style="width:100%;padding:8px" placeholder="ex: ABC1D23" /></div>
         <div class="field">
@@ -152,6 +228,26 @@
         <div class="field"><label>Observações (opcional)</label><input type="text" id="dl-notes" style="width:100%;padding:8px" /></div>
         <button class="btn" onclick="createDriverRoute()">Lançar rota</button>
         <div id="dl-result" style="margin-top:14px"></div>
+      </div>
+
+      <div class="modal" style="max-width:820px; box-shadow:var(--shadow); border:1px solid var(--border); margin-top:20px;">
+        <h3 style="margin-top:0">Lançamento em massa (planilha)</h3>
+        <p class="muted"><strong>Inclua a linha de cabeçalho</strong> (os nomes das colunas) junto com as linhas de dados —
+          selecione a partir do cabeçalho da sua planilha e cole aqui com Ctrl+C / Ctrl+V, ou anexe um arquivo .csv exportado
+          com o cabeçalho. O sistema identifica cada coluna pelo <strong>nome</strong> (não pela posição): colunas com "Parada"
+          no nome viram paradas da rota, e qualquer outra coluna (Telefone, Contato, Transportadora, Perfil, etc.) vai para as
+          observações da rota, sem se misturar com as paradas.</p>
+        <div class="field">
+          <label>Arquivo .csv (opcional)</label>
+          <input type="file" accept=".csv,text/csv" onchange="handleBulkFile(this)" />
+        </div>
+        <div class="field">
+          <label>Ou cole as linhas aqui</label>
+          <textarea id="bulk-input" rows="6" style="width:100%;padding:8px;font-family:inherit;font-size:12.5px" placeholder="Cole aqui as linhas copiadas da planilha..."></textarea>
+        </div>
+        <button class="btn secondary" onclick="previewBulk()">Conferir linhas</button>
+        <div id="bulk-preview" style="margin-top:14px;overflow-x:auto"></div>
+        <div id="bulk-results" style="margin-top:14px;overflow-x:auto"></div>
       </div>
     </section>
   </main>
