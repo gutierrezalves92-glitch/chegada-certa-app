@@ -4,7 +4,7 @@ const appEl = document.getElementById('app');
 const msgEl = document.getElementById('msg');
 const PLATE_KEY = 'chegada-certa:last-plate';
 const PENDING_KEY = 'chegada-certa:pending-actions';
-
+ 
 function fmtDT(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -34,7 +34,7 @@ function fileToBase64(file) {
     reader.readAsDataURL(file);
   });
 }
-
+ 
 // ---------------------------------------------------------------- localização (GPS)
 // A localização é essencial pra confiabilidade dos dados, então nunca falha em silêncio:
 // tenta com alta precisão primeiro, tenta de novo com precisão menor se a primeira falhar,
@@ -76,7 +76,7 @@ async function confirmProceedWithoutGps() {
     'Não foi possível confirmar sua localização.\n\nDeseja continuar mesmo assim, sem registrar a localização GPS deste evento?'
   );
 }
-
+ 
 // ---------------------------------------------------------------- fila local (nunca perder um registro)
 // Toda saída de perna e toda chegada é SALVA NESTE CELULAR (localStorage) antes de tentar
 // enviar pro servidor. Se o envio falhar (sem internet, ou o servidor demorando pra "acordar"
@@ -109,7 +109,7 @@ function pendingForCurrentRoute() {
   if (!route) return null;
   return loadPending().find((a) => a.body && a.body.route_id === route.id) || null;
 }
-
+ 
 async function sendAction(action) {
   if (action.type === 'journey') {
     await api('/journeys', { method: 'POST', body: JSON.stringify(action.body) });
@@ -125,7 +125,7 @@ async function sendAction(action) {
     await api(`/routes/${action.body.route_id}/complete`, { method: 'PATCH' });
   }
 }
-
+ 
 let flushing = false;
 async function flushPending() {
   if (flushing) return;
@@ -157,11 +157,11 @@ async function flushPending() {
 }
 window.addEventListener('online', flushPending);
 setInterval(flushPending, 15000);
-
+ 
 let route = null;
 let plate = null;
 let timerHandle = null;
-
+ 
 function fmtElapsed(ms) {
   if (!Number.isFinite(ms) || ms < 0) ms = 0;
   const totalSec = Math.floor(ms / 1000);
@@ -171,9 +171,9 @@ function fmtElapsed(ms) {
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
-
+ 
 // ---------------------------------------------------------------- boot / identificação
-
+ 
 async function boot() {
   flushPending(); // se sobrou algum registro pendente de antes (app fechado, sem sinal, etc.), tenta enviar já
   if (tokenFromUrl) {
@@ -193,7 +193,7 @@ async function boot() {
   }
   renderPlateForm();
 }
-
+ 
 function renderPlateForm(errorMsg) {
   document.getElementById('route-title').textContent = '';
   const pendingCount = loadPending().length;
@@ -209,14 +209,14 @@ function renderPlateForm(errorMsg) {
   inp.focus();
   inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') submitPlate(); });
 }
-
+ 
 async function submitPlate() {
   const val = document.getElementById('plate-input').value.trim();
   if (!val) return say('Digite a placa.');
   say('Procurando rota...', false);
   await loadByPlate(val, false);
 }
-
+ 
 async function loadByPlate(val, silent) {
   try {
     route = await api('/routes/by-plate/' + encodeURIComponent(val));
@@ -234,29 +234,29 @@ async function loadByPlate(val, silent) {
     return false;
   }
 }
-
+ 
 function trocarPlaca() {
   localStorage.removeItem(PLATE_KEY);
   route = null;
   plate = null;
   renderPlateForm();
 }
-
+ 
 function reloadRoute() {
   return tokenFromUrl ? api('/routes/token/' + tokenFromUrl) : api('/routes/by-plate/' + encodeURIComponent(plate));
 }
-
+ 
 // ---------------------------------------------------------------- render
-
+ 
 function render() {
   document.getElementById('route-title').textContent = `${route.driver_name} · ${route.plate} · rota #${route.id}`;
-
+ 
   const pending = pendingForCurrentRoute();
   const plannedMode = Array.isArray(route.stops) && route.stops.length > 0;
   const openJourney = route.journeys.find((j) => !j.completed_at);
   const sortedJourneys = route.journeys.slice().sort((a, b) => (a.leg_number || 0) - (b.leg_number || 0));
   const firstJourney = sortedJourneys[0] || null;
-
+ 
   let timerHtml = '';
   if (firstJourney) {
     timerHtml = `<div class="sheet timer-sheet">
@@ -264,7 +264,7 @@ function render() {
       <div class="timer-box"><div class="label">Tempo desta perna</div><div class="value" id="timer-leg">${openJourney ? '00:00:00' : '—'}</div></div>
     </div>`;
   }
-
+ 
   const history = route.arrivals
     .slice()
     .sort((a, b) => (a.leg_number || 0) - (b.leg_number || 0))
@@ -273,7 +273,7 @@ function render() {
         <span class="pill ${a.status}">${a.status === 'late' ? 'atrasado' : a.status === 'early' ? 'adiantado' : 'no horário'}</span></div>`
     )
     .join('');
-
+ 
   let itineraryHtml = '';
   if (plannedMode) {
     const rows = route.stops
@@ -287,7 +287,7 @@ function render() {
       .join('');
     itineraryHtml = `<div class="sheet"><h3>Roteiro (HUB PRINCIPAL → ${route.stops.map((s) => s.base).join(' → ')})</h3>${rows}</div>`;
   }
-
+ 
   let actionHtml = '';
   if (pending) {
     actionHtml = pendingActionHtml(pending);
@@ -311,7 +311,7 @@ function render() {
   } else {
     actionHtml = startLegFormHtml();
   }
-
+ 
   appEl.innerHTML = `
     ${timerHtml}
     ${itineraryHtml}
@@ -320,7 +320,7 @@ function render() {
     ${!pending && !route.completed_at && !openJourney && !plannedMode ? `<button class="bigbtn secondary" id="btn-finish-route">Concluir rota</button>` : ''}
     ${!tokenFromUrl ? `<button class="bigbtn secondary" id="btn-troca-placa">Trocar placa</button>` : ''}
   `;
-
+ 
   // temporizador ao vivo: tempo total da rota (desde a saída do HUB) e tempo da perna atual.
   // sempre reinicia o intervalo anterior para nunca acumular vários tickers rodando juntos.
   if (timerHandle) {
@@ -342,7 +342,7 @@ function render() {
     if (!route.completed_at) timerHandle = setInterval(tick, 1000);
   }
 }
-
+ 
 // cartão mostrado quando há um registro salvo neste celular ainda aguardando envio ao servidor —
 // substitui o formulário de ação pra impedir que o motorista registre a mesma coisa duas vezes.
 function pendingActionHtml(pending) {
@@ -360,7 +360,7 @@ function pendingActionHtml(pending) {
     <button class="bigbtn" id="btn-retry-pending">Tentar enviar agora</button>
   </div>`;
 }
-
+ 
 // comprovante final: mostrado quando a rota é concluída (última perna registrada) —
 // horário de saída do HUB principal e o horário de chegada em cada base.
 function receiptHtml(firstJourney) {
@@ -382,7 +382,7 @@ function receiptHtml(firstJourney) {
     ${rows || '<p class="muted">Nenhuma chegada registrada.</p>'}
   </div>`;
 }
-
+ 
 function nextLegNumber() {
   return route.journeys.length + 1;
 }
@@ -390,7 +390,7 @@ function defaultOriginBase() {
   const legs = route.journeys.slice().sort((a, b) => b.leg_number - a.leg_number);
   return legs[0] ? legs[0].base : 'HUB PRINCIPAL';
 }
-
+ 
 function startLegFormHtml() {
   return `
     <div class="sheet">
@@ -401,7 +401,7 @@ function startLegFormHtml() {
       <div class="gps" id="leg-gps"></div>
     </div>`;
 }
-
+ 
 function arrivalFormHtml(journey) {
   return `
     <div class="sheet">
@@ -423,14 +423,14 @@ function arrivalFormHtml(journey) {
         </select>
         <input id="ar-delay-details" placeholder="detalhes (opcional)" style="margin-top:8px" />
       </div>
-      <div class="field"><label>Malotes coletados (opcional)</label><input type="number" id="ar-bags" /></div>
+      <div class="field"><label>Sacas</label><input type="number" id="ar-bags" min="0" step="1" required /></div>
       <div class="field"><label>Foto de entrega</label><input type="file" accept="image/*" capture="environment" id="ar-photo" /></div>
       <div class="field"><label>Observações</label><textarea id="ar-notes" rows="2"></textarea></div>
       <button class="bigbtn" id="btn-register-arrival">Capturar GPS e registrar chegada</button>
       <div class="gps" id="ar-gps"></div>
     </div>`;
 }
-
+ 
 let baseOpenValue = null;
 function setBaseOpen(v) {
   baseOpenValue = v;
@@ -438,7 +438,7 @@ function setBaseOpen(v) {
   document.getElementById('btn-open-no').classList.toggle('on', v === false);
   document.getElementById('delay-field').style.display = v === false ? 'block' : 'none';
 }
-
+ 
 document.addEventListener('click', async (ev) => {
   if (ev.target.id === 'btn-find-plate') return submitPlate();
   if (ev.target.id === 'btn-start-leg') return startLeg();
@@ -447,11 +447,11 @@ document.addEventListener('click', async (ev) => {
   if (ev.target.id === 'btn-troca-placa') return trocarPlaca();
   if (ev.target.id === 'btn-retry-pending') return flushPending();
 });
-
+ 
 async function startLeg() {
   const btn = document.getElementById('btn-start-leg');
   btn.disabled = true;
-
+ 
   const plannedMode = Array.isArray(route.stops) && route.stops.length > 0;
   let dest, origin;
   if (plannedMode) {
@@ -467,7 +467,7 @@ async function startLeg() {
     btn.disabled = false;
     return;
   }
-
+ 
   const coords = await getPositionWithRetry(document.getElementById('leg-gps'));
   if (!coords) {
     const proceed = await confirmProceedWithoutGps();
@@ -476,7 +476,7 @@ async function startLeg() {
       return;
     }
   }
-
+ 
   const action = {
     localId: genId(),
     type: 'journey',
@@ -509,9 +509,15 @@ async function startLeg() {
     say('Sem conexão no momento — a saída foi salva neste celular e será enviada automaticamente assim que possível.', true);
   }
 }
-
+ 
 async function registerArrival() {
   const journey = route.journeys.find((j) => !j.completed_at);
+  // Sacas agora é obrigatório — sem esse número a chegada não pode ser registrada.
+  const bagsRaw = document.getElementById('ar-bags').value;
+  if (bagsRaw === '' || Number.isNaN(Number(bagsRaw)) || Number(bagsRaw) < 0) {
+    say('Informe a quantidade de sacas.');
+    return;
+  }
   const btn = document.getElementById('btn-register-arrival');
   btn.disabled = true;
   const coords = await getPositionWithRetry(document.getElementById('ar-gps'));
@@ -524,7 +530,7 @@ async function registerArrival() {
   }
   const photoFile = document.getElementById('ar-photo').files[0];
   const photoBase64 = photoFile ? await fileToBase64(photoFile) : null;
-
+ 
   const body = {
     route_id: route.id,
     journey_id: journey.id,
@@ -540,14 +546,14 @@ async function registerArrival() {
     base_open_on_arrival: baseOpenValue === null ? null : baseOpenValue ? 1 : 0,
     unloading_delay_reason: baseOpenValue === false ? document.getElementById('ar-delay-reason').value || null : null,
     unloading_delay_details: baseOpenValue === false ? document.getElementById('ar-delay-details').value || null : null,
-    collected_bags: document.getElementById('ar-bags').value ? Number(document.getElementById('ar-bags').value) : null,
+    collected_bags: Number(bagsRaw),
     notes: document.getElementById('ar-notes').value,
     hub_departed_at: journey.started_at,
     hub_latitude: journey.start_latitude,
     hub_longitude: journey.start_longitude,
     hub_accuracy_meters: journey.start_accuracy_meters,
   };
-
+ 
   const action = {
     localId: genId(),
     type: 'arrival',
@@ -572,7 +578,7 @@ async function registerArrival() {
     say('Sem conexão no momento — a chegada foi salva neste celular (com foto e observações) e será enviada automaticamente assim que possível.', true);
   }
 }
-
+ 
 async function finishRoute() {
   const action = { localId: genId(), type: 'complete-route', createdAt: Date.now(), body: { route_id: route.id } };
   queuePendingAction(action);
@@ -586,5 +592,6 @@ async function finishRoute() {
     say('Sem conexão no momento — a conclusão da rota foi salva e será enviada automaticamente assim que possível.', true);
   }
 }
-
+ 
 boot();
+ 
