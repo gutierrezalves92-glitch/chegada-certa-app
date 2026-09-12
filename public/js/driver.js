@@ -4,7 +4,7 @@ const appEl = document.getElementById('app');
 const msgEl = document.getElementById('msg');
 const PLATE_KEY = 'chegada-certa:last-plate';
 const PENDING_KEY = 'chegada-certa:pending-actions';
- 
+
 function fmtDT(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -34,7 +34,7 @@ function fileToBase64(file) {
     reader.readAsDataURL(file);
   });
 }
- 
+
 // ---------------------------------------------------------------- localização (GPS)
 // A localização é essencial pra confiabilidade dos dados, então nunca falha em silêncio:
 // tenta com alta precisão primeiro, tenta de novo com precisão menor se a primeira falhar,
@@ -76,7 +76,7 @@ async function confirmProceedWithoutGps() {
     'Não foi possível confirmar sua localização.\n\nDeseja continuar mesmo assim, sem registrar a localização GPS deste evento?'
   );
 }
- 
+
 // ---------------------------------------------------------------- fila local (nunca perder um registro)
 // Toda saída de perna e toda chegada é SALVA NESTE CELULAR (localStorage) antes de tentar
 // enviar pro servidor. Se o envio falhar (sem internet, ou o servidor demorando pra "acordar"
@@ -109,7 +109,7 @@ function pendingForCurrentRoute() {
   if (!route) return null;
   return loadPending().find((a) => a.body && a.body.route_id === route.id) || null;
 }
- 
+
 async function sendAction(action) {
   if (action.type === 'journey') {
     await api('/journeys', { method: 'POST', body: JSON.stringify(action.body) });
@@ -121,11 +121,15 @@ async function sendAction(action) {
         body: JSON.stringify({ data_base64: action.photoBase64, name: action.photoName, type: action.photoType }),
       });
     }
+  } else if (action.type === 'start-unloading') {
+    await api(`/arrivals/${action.body.arrival_id}/start-unloading`, { method: 'PATCH', body: JSON.stringify({}) });
+  } else if (action.type === 'finish-unloading') {
+    await api(`/arrivals/${action.body.arrival_id}/finish-unloading`, { method: 'PATCH', body: JSON.stringify({}) });
   } else if (action.type === 'complete-route') {
     await api(`/routes/${action.body.route_id}/complete`, { method: 'PATCH' });
   }
 }
- 
+
 let flushing = false;
 async function flushPending() {
   if (flushing) return;
@@ -157,11 +161,11 @@ async function flushPending() {
 }
 window.addEventListener('online', flushPending);
 setInterval(flushPending, 15000);
- 
+
 let route = null;
 let plate = null;
 let timerHandle = null;
- 
+
 function fmtElapsed(ms) {
   if (!Number.isFinite(ms) || ms < 0) ms = 0;
   const totalSec = Math.floor(ms / 1000);
@@ -171,9 +175,9 @@ function fmtElapsed(ms) {
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
- 
+
 // ---------------------------------------------------------------- boot / identificação
- 
+
 async function boot() {
   flushPending(); // se sobrou algum registro pendente de antes (app fechado, sem sinal, etc.), tenta enviar já
   if (tokenFromUrl) {
@@ -193,7 +197,7 @@ async function boot() {
   }
   renderPlateForm();
 }
- 
+
 function renderPlateForm(errorMsg) {
   document.getElementById('route-title').textContent = '';
   const pendingCount = loadPending().length;
@@ -209,14 +213,14 @@ function renderPlateForm(errorMsg) {
   inp.focus();
   inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') submitPlate(); });
 }
- 
+
 async function submitPlate() {
   const val = document.getElementById('plate-input').value.trim();
   if (!val) return say('Digite a placa.');
   say('Procurando rota...', false);
   await loadByPlate(val, false);
 }
- 
+
 async function loadByPlate(val, silent) {
   try {
     route = await api('/routes/by-plate/' + encodeURIComponent(val));
@@ -234,29 +238,33 @@ async function loadByPlate(val, silent) {
     return false;
   }
 }
- 
+
 function trocarPlaca() {
   localStorage.removeItem(PLATE_KEY);
   route = null;
   plate = null;
   renderPlateForm();
 }
- 
+
 function reloadRoute() {
   return tokenFromUrl ? api('/routes/token/' + tokenFromUrl) : api('/routes/by-plate/' + encodeURIComponent(plate));
 }
- 
+
 // ---------------------------------------------------------------- render
- 
+
 function render() {
   document.getElementById('route-title').textContent = `${route.driver_name} · ${route.plate} · rota #${route.id}`;
- 
+
   const pending = pendingForCurrentRoute();
   const plannedMode = Array.isArray(route.stops) && route.stops.length > 0;
   const openJourney = route.journeys.find((j) => !j.completed_at);
+  // Enquanto a perna está aberta, a chegada pode já ter sido registrada (etapa 1) sem que o
+  // descarregamento tenha começado (etapa 2) ou terminado (etapa 3) — é isso que decide qual
+  // tela mostrar a seguir, sem esperar a perna ser concluída (que só acontece na etapa 3).
+  const arrivalRec = openJourney ? route.arrivals.find((a) => a.journey_id === openJourney.id) : null;
   const sortedJourneys = route.journeys.slice().sort((a, b) => (a.leg_number || 0) - (b.leg_number || 0));
   const firstJourney = sortedJourneys[0] || null;
- 
+
   let timerHtml = '';
   if (firstJourney) {
     timerHtml = `<div class="sheet timer-sheet">
@@ -264,7 +272,7 @@ function render() {
       <div class="timer-box"><div class="label">Tempo desta perna</div><div class="value" id="timer-leg">${openJourney ? '00:00:00' : '—'}</div></div>
     </div>`;
   }
- 
+
   const history = route.arrivals
     .slice()
     .sort((a, b) => (a.leg_number || 0) - (b.leg_number || 0))
@@ -273,7 +281,7 @@ function render() {
         <span class="pill ${a.status}">${a.status === 'late' ? 'atrasado' : a.status === 'early' ? 'adiantado' : 'no horário'}</span></div>`
     )
     .join('');
- 
+
   let itineraryHtml = '';
   if (plannedMode) {
     const rows = route.stops
@@ -287,14 +295,17 @@ function render() {
       .join('');
     itineraryHtml = `<div class="sheet"><h3>Roteiro (HUB PRINCIPAL → ${route.stops.map((s) => s.base).join(' → ')})</h3>${rows}</div>`;
   }
- 
+
   let actionHtml = '';
   if (pending) {
     actionHtml = pendingActionHtml(pending);
   } else if (route.completed_at) {
     actionHtml = receiptHtml(firstJourney);
   } else if (openJourney) {
-    actionHtml = arrivalFormHtml(openJourney);
+    if (!arrivalRec) actionHtml = arrivalFormHtml(openJourney);
+    else if (!arrivalRec.unloading_started_at) actionHtml = startUnloadingHtml(arrivalRec);
+    else if (!arrivalRec.unloading_completed_at) actionHtml = finishUnloadingHtml(arrivalRec);
+    else actionHtml = `<div class="sheet"><p class="muted">Processando conclusão da perna...</p></div>`;
   } else if (plannedMode) {
     const pendingStop = route.stops.find((s) => s.seq_number === nextLegNumber());
     if (pendingStop) {
@@ -311,7 +322,7 @@ function render() {
   } else {
     actionHtml = startLegFormHtml();
   }
- 
+
   appEl.innerHTML = `
     ${timerHtml}
     ${itineraryHtml}
@@ -320,7 +331,7 @@ function render() {
     ${!pending && !route.completed_at && !openJourney && !plannedMode ? `<button class="bigbtn secondary" id="btn-finish-route">Concluir rota</button>` : ''}
     ${!tokenFromUrl ? `<button class="bigbtn secondary" id="btn-troca-placa">Trocar placa</button>` : ''}
   `;
- 
+
   // temporizador ao vivo: tempo total da rota (desde a saída do HUB) e tempo da perna atual.
   // sempre reinicia o intervalo anterior para nunca acumular vários tickers rodando juntos.
   if (timerHandle) {
@@ -331,18 +342,29 @@ function render() {
     const overallStartMs = new Date(firstJourney.started_at).getTime();
     const legStartMs = openJourney ? new Date(openJourney.started_at).getTime() : null;
     const frozenAtMs = route.completed_at ? new Date(route.completed_at).getTime() : null;
+    // tempo de espera (chegada -> início do descarregamento) só corre enquanto ainda não começou;
+    // tempo de descarregamento só corre depois de iniciado e antes de finalizado.
+    const waitStartMs = arrivalRec && !arrivalRec.unloading_started_at ? new Date(arrivalRec.arrived_at).getTime() : null;
+    const unloadStartMs =
+      arrivalRec && arrivalRec.unloading_started_at && !arrivalRec.unloading_completed_at
+        ? new Date(arrivalRec.unloading_started_at).getTime()
+        : null;
     const tick = () => {
       const nowMs = frozenAtMs || Date.now();
       const overallEl = document.getElementById('timer-overall');
       if (overallEl) overallEl.textContent = fmtElapsed(nowMs - overallStartMs);
       const legEl = document.getElementById('timer-leg');
       if (legEl && legStartMs != null) legEl.textContent = fmtElapsed(nowMs - legStartMs);
+      const waitEl = document.getElementById('timer-wait');
+      if (waitEl && waitStartMs != null) waitEl.textContent = fmtElapsed(nowMs - waitStartMs);
+      const unloadEl = document.getElementById('timer-unload');
+      if (unloadEl && unloadStartMs != null) unloadEl.textContent = fmtElapsed(nowMs - unloadStartMs);
     };
     tick();
     if (!route.completed_at) timerHandle = setInterval(tick, 1000);
   }
 }
- 
+
 // cartão mostrado quando há um registro salvo neste celular ainda aguardando envio ao servidor —
 // substitui o formulário de ação pra impedir que o motorista registre a mesma coisa duas vezes.
 function pendingActionHtml(pending) {
@@ -351,6 +373,10 @@ function pendingActionHtml(pending) {
       ? `Saída para <strong>${pending.body.base}</strong>`
       : pending.type === 'arrival'
       ? `Chegada em <strong>${pending.body.base}</strong>`
+      : pending.type === 'start-unloading'
+      ? 'Início do descarregamento'
+      : pending.type === 'finish-unloading'
+      ? 'Fim do descarregamento'
       : 'Conclusão da rota';
   return `<div class="sheet">
     <h3>⏳ Aguardando conexão</h3>
@@ -360,7 +386,7 @@ function pendingActionHtml(pending) {
     <button class="bigbtn" id="btn-retry-pending">Tentar enviar agora</button>
   </div>`;
 }
- 
+
 // comprovante final: mostrado quando a rota é concluída (última perna registrada) —
 // horário de saída do HUB principal e o horário de chegada em cada base.
 function receiptHtml(firstJourney) {
@@ -382,7 +408,7 @@ function receiptHtml(firstJourney) {
     ${rows || '<p class="muted">Nenhuma chegada registrada.</p>'}
   </div>`;
 }
- 
+
 function nextLegNumber() {
   return route.journeys.length + 1;
 }
@@ -390,7 +416,7 @@ function defaultOriginBase() {
   const legs = route.journeys.slice().sort((a, b) => b.leg_number - a.leg_number);
   return legs[0] ? legs[0].base : 'HUB PRINCIPAL';
 }
- 
+
 function startLegFormHtml() {
   return `
     <div class="sheet">
@@ -401,7 +427,7 @@ function startLegFormHtml() {
       <div class="gps" id="leg-gps"></div>
     </div>`;
 }
- 
+
 function arrivalFormHtml(journey) {
   return `
     <div class="sheet">
@@ -430,7 +456,39 @@ function arrivalFormHtml(journey) {
       <div class="gps" id="ar-gps"></div>
     </div>`;
 }
- 
+
+// Etapa 2: chegada já registrada (base aberta OU fechada — em ambos os casos o tempo de espera
+// conta a partir da chegada), falta só confirmar quando o descarregamento realmente começou.
+function startUnloadingHtml(arrival) {
+  const baseStatus =
+    arrival.base_open_on_arrival === 1
+      ? 'Base estava aberta na chegada.'
+      : arrival.base_open_on_arrival === 0
+      ? 'Base estava fechada na chegada.'
+      : '';
+  return `
+    <div class="sheet">
+      <h3>Chegada registrada em ${arrival.base}</h3>
+      <p class="muted">${baseStatus} Chegada às ${fmtDT(arrival.arrived_at)}.</p>
+      <div class="timer-box"><div class="label">Tempo de espera (chegada → início do descarregamento)</div><div class="value" id="timer-wait">00:00:00</div></div>
+      <button class="bigbtn" id="btn-start-unloading" data-arrival-id="${arrival.id}">Iniciar descarregamento</button>
+    </div>`;
+}
+
+// Etapa 3: descarregamento em andamento — falta confirmar quando terminou. É só aqui que a
+// perna é concluída e a rota retoma a viagem pra próxima base (ou é concluída, se era a última).
+function finishUnloadingHtml(arrival) {
+  return `
+    <div class="sheet">
+      <h3>Descarregando em ${arrival.base}</h3>
+      <p class="muted">Início do descarregamento: ${fmtDT(arrival.unloading_started_at)}${
+    arrival.waiting_minutes != null ? ` · tempo de espera: ${arrival.waiting_minutes} min` : ''
+  }</p>
+      <div class="timer-box"><div class="label">Tempo de descarregamento</div><div class="value" id="timer-unload">00:00:00</div></div>
+      <button class="bigbtn" id="btn-finish-unloading" data-arrival-id="${arrival.id}">Finalizar descarregamento e retomar viagem</button>
+    </div>`;
+}
+
 let baseOpenValue = null;
 function setBaseOpen(v) {
   baseOpenValue = v;
@@ -438,20 +496,22 @@ function setBaseOpen(v) {
   document.getElementById('btn-open-no').classList.toggle('on', v === false);
   document.getElementById('delay-field').style.display = v === false ? 'block' : 'none';
 }
- 
+
 document.addEventListener('click', async (ev) => {
   if (ev.target.id === 'btn-find-plate') return submitPlate();
   if (ev.target.id === 'btn-start-leg') return startLeg();
   if (ev.target.id === 'btn-register-arrival') return registerArrival();
+  if (ev.target.id === 'btn-start-unloading') return startUnloadingAction(Number(ev.target.dataset.arrivalId));
+  if (ev.target.id === 'btn-finish-unloading') return finishUnloadingAction(Number(ev.target.dataset.arrivalId));
   if (ev.target.id === 'btn-finish-route') return finishRoute();
   if (ev.target.id === 'btn-troca-placa') return trocarPlaca();
   if (ev.target.id === 'btn-retry-pending') return flushPending();
 });
- 
+
 async function startLeg() {
   const btn = document.getElementById('btn-start-leg');
   btn.disabled = true;
- 
+
   const plannedMode = Array.isArray(route.stops) && route.stops.length > 0;
   let dest, origin;
   if (plannedMode) {
@@ -467,7 +527,7 @@ async function startLeg() {
     btn.disabled = false;
     return;
   }
- 
+
   const coords = await getPositionWithRetry(document.getElementById('leg-gps'));
   if (!coords) {
     const proceed = await confirmProceedWithoutGps();
@@ -476,7 +536,7 @@ async function startLeg() {
       return;
     }
   }
- 
+
   const action = {
     localId: genId(),
     type: 'journey',
@@ -509,7 +569,7 @@ async function startLeg() {
     say('Sem conexão no momento — a saída foi salva neste celular e será enviada automaticamente assim que possível.', true);
   }
 }
- 
+
 async function registerArrival() {
   const journey = route.journeys.find((j) => !j.completed_at);
   // Sacas agora é obrigatório — sem esse número a chegada não pode ser registrada.
@@ -530,7 +590,7 @@ async function registerArrival() {
   }
   const photoFile = document.getElementById('ar-photo').files[0];
   const photoBase64 = photoFile ? await fileToBase64(photoFile) : null;
- 
+
   const body = {
     route_id: route.id,
     journey_id: journey.id,
@@ -553,7 +613,7 @@ async function registerArrival() {
     hub_longitude: journey.start_longitude,
     hub_accuracy_meters: journey.start_accuracy_meters,
   };
- 
+
   const action = {
     localId: genId(),
     type: 'arrival',
@@ -571,14 +631,64 @@ async function registerArrival() {
   try {
     await sendAction(action);
     removePendingAction(action.localId);
-    say('Chegada registrada!', false);
+    say('Chegada registrada! Agora informe quando iniciar o descarregamento.', false);
     route = await reloadRoute();
     render();
   } catch (e) {
     say('Sem conexão no momento — a chegada foi salva neste celular (com foto e observações) e será enviada automaticamente assim que possível.', true);
   }
 }
- 
+
+// Etapa 2: motorista confirma que o descarregamento começou (base aberta ou fechada, tanto faz —
+// o que importa é medir o tempo de espera desde a chegada até este toque).
+async function startUnloadingAction(arrivalId) {
+  const btn = document.getElementById('btn-start-unloading');
+  if (btn) btn.disabled = true;
+  const action = {
+    localId: genId(),
+    type: 'start-unloading',
+    createdAt: Date.now(),
+    body: { route_id: route.id, arrival_id: arrivalId },
+  };
+  queuePendingAction(action);
+  say('Enviando...', false);
+  render();
+  try {
+    await sendAction(action);
+    removePendingAction(action.localId);
+    say('Início do descarregamento registrado.', false);
+    route = await reloadRoute();
+    render();
+  } catch (e) {
+    say('Sem conexão no momento — o início do descarregamento foi salvo neste celular e será enviado automaticamente assim que possível.', true);
+  }
+}
+
+// Etapa 3: motorista confirma o fim do descarregamento — é só aqui que a perna se conclui e a
+// rota retoma a viagem (avança pra próxima base, ou conclui a rota, automaticamente).
+async function finishUnloadingAction(arrivalId) {
+  const btn = document.getElementById('btn-finish-unloading');
+  if (btn) btn.disabled = true;
+  const action = {
+    localId: genId(),
+    type: 'finish-unloading',
+    createdAt: Date.now(),
+    body: { route_id: route.id, arrival_id: arrivalId },
+  };
+  queuePendingAction(action);
+  say('Enviando...', false);
+  render();
+  try {
+    await sendAction(action);
+    removePendingAction(action.localId);
+    say('Descarregamento finalizado — retomando a viagem.', false);
+    route = await reloadRoute();
+    render();
+  } catch (e) {
+    say('Sem conexão no momento — a finalização do descarregamento foi salva neste celular e será enviada automaticamente assim que possível.', true);
+  }
+}
+
 async function finishRoute() {
   const action = { localId: genId(), type: 'complete-route', createdAt: Date.now(), body: { route_id: route.id } };
   queuePendingAction(action);
@@ -592,6 +702,5 @@ async function finishRoute() {
     say('Sem conexão no momento — a conclusão da rota foi salva e será enviada automaticamente assim que possível.', true);
   }
 }
- 
+
 boot();
- 
