@@ -1,5 +1,3 @@
--- Schema Postgres do Chegada Certa (compatível com Supabase / qualquer Postgres gerenciado).
-
 CREATE TABLE IF NOT EXISTS routes (
   id BIGINT PRIMARY KEY,
   driver_name TEXT NOT NULL,
@@ -72,6 +70,14 @@ CREATE TABLE IF NOT EXISTS arrivals (
   collected_bags INTEGER,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Etapas do descarregamento (chegada -> início -> fim), pra medir tempo de espera e tempo de
+-- descarregamento. Usa ALTER TABLE porque a tabela "arrivals" já existe em produção — o
+-- CREATE TABLE IF NOT EXISTS acima não adiciona colunas novas numa tabela já existente.
+ALTER TABLE arrivals ADD COLUMN IF NOT EXISTS unloading_started_at TIMESTAMPTZ;
+ALTER TABLE arrivals ADD COLUMN IF NOT EXISTS unloading_completed_at TIMESTAMPTZ;
+ALTER TABLE arrivals ADD COLUMN IF NOT EXISTS waiting_minutes INTEGER;
+ALTER TABLE arrivals ADD COLUMN IF NOT EXISTS unloading_minutes INTEGER;
 
 CREATE TABLE IF NOT EXISTS route_stops (
   id BIGINT PRIMARY KEY,
