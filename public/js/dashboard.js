@@ -29,6 +29,148 @@ function operatorEmail() {
   return document.getElementById('operatorEmail').value.trim() || null;
 }
 
+// ---------------------------------------------------------------- exportar CSV
+// Gera um CSV (separado por ";" e com BOM UTF-8, pro Excel em português abrir certo,
+// já com os acentos corretos) e dispara o download no navegador. `columns` é uma lista
+// de { label, value(row) } — o cabeçalho vem de `label` e cada célula de `value(row)`.
+function csvEscape(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  if (/[";\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+function downloadCsv(filename, columns, rows) {
+  const lines = [columns.map((c) => csvEscape(c.label)).join(';')];
+  rows.forEach((row) => {
+    lines.push(columns.map((c) => csvEscape(c.value(row))).join(';'));
+  });
+  const csv = '﻿' + lines.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+// Busca até 5000 linhas do endpoint (bem mais que a paginação da tela) respeitando
+// os mesmos filtros já aplicados, pra exportar TODOS os dados filtrados, não só a página atual.
+async function fetchAllForExport(path, extraParams) {
+  const qs = new URLSearchParams({ limit: 5000, offset: 0, ...extraParams });
+  const data = await api(path + '?' + qs.toString());
+  return Array.isArray(data) ? data : data.rows || [];
+}
+
+function routeStatusLabel(r) {
+  if (!r.completed_at) return 'Em andamento';
+  if (r.management_closed_at) return 'Fechada pela gestão';
+  return 'Aguardando revisão';
+}
+
+async function exportRoutesCsv() {
+  const params = {};
+  const date = document.getElementById('rt-date').value;
+  const driver = document.getElementById('rt-driver').value;
+  const plate = document.getElementById('rt-plate').value;
+  const status = document.getElementById('rt-status').value;
+  if (date) params.date = date;
+  if (driver) params.driver = driver;
+  if (plate) params.plate = plate;
+  if (status) params.status = status;
+  const rows = await fetchAllForExport('/routes', params);
+  downloadCsv(`chegada-certa_rotas_${todayLocalDateStr()}.csv`, [
+    { label: 'ID', value: (r) => r.id },
+    { label: 'Motorista', value: (r) => r.driver_name },
+    { label: 'Placa', value: (r) => r.plate },
+    { label: 'Início', value: (r) => fmtDT(r.started_at) },
+    { label: 'Conclusão', value: (r) => fmtDT(r.completed_at) },
+    { label: 'Pernas', value: (r) => r.legs },
+    { label: 'Chegadas', value: (r) => r.arrivals_count },
+    { label: 'Atrasos', value: (r) => r.late_count },
+    { label: 'Status', value: routeStatusLabel },
+    { label: 'Observações', value: (r) => r.notes || '' },
+  ], rows);
+}
+
+async function exportArrivalsCsv() {
+  const params = {};
+  const base = document.getElementById('ar-base').value;
+  const status = document.getElementById('ar-status').value;
+  const driver = document.getElementById('ar-driver').value;
+  const from = document.getElementById('ar-from').value;
+  const to = document.getElementById('ar-to').value;
+  if (base) params.base = base;
+  if (status) params.status = status;
+  if (driver) params.driver = driver;
+  if (from) params.date_from = from;
+  if (to) params.date_to = to;
+  const rows = await fetchAllForExport('/arrivals', params);
+  downloadCsv(`chegada-certa_chegadas_${todayLocalDateStr()}.csv`, [
+    { label: 'ID', value: (a) => a.id },
+    { label: 'Base', value: (a) => a.base },
+    { label: 'Motorista', value: (a) => a.driver_name || '' },
+    { label: 'Placa', value: (a) => a.plate || '' },
+    { label: 'Origem', value: (a) => a.origin_base || '' },
+    { label: 'Perna', value: (a) => a.leg_number },
+    { label: 'Agendado', value: (a) => fmtDT(a.scheduled_at) },
+    { label: 'Chegada', value: (a) => fmtDT(a.arrived_at) },
+    { label: 'Desvio (min)', value: (a) => (a.deviation_minutes ?? '') },
+    { label: 'Status', value: (a) => statusLabel(a.status) },
+    { label: 'Base aberta na chegada', value: (a) => (a.base_open_on_arrival == null ? '' : a.base_open_on_arrival ? 'sim' : 'não') },
+    { label: 'Motivo do atraso p/ descarga', value: (a) => a.unloading_delay_reason || '' },
+    { label: 'Sacas', value: (a) => (a.collected_bags ?? '') },
+    { label: 'Saída do hub', value: (a) => fmtDT(a.hub_departed_at) },
+    { label: 'Tempo de viagem (min)', value: (a) => (a.travel_minutes ?? '') },
+    { label: 'Início do descarregamento', value: (a) => fmtDT(a.unloading_started_at) },
+    { label: 'Fim do descarregamento', value: (a) => fmtDT(a.unloading_completed_at) },
+    { label: 'Tempo de espera (min)', value: (a) => (a.waiting_minutes ?? '') },
+    { label: 'Tempo de descarregamento (min)', value: (a) => (a.unloading_minutes ?? '') },
+    { label: 'Notas', value: (a) => a.notes || '' },
+  ], rows);
+}
+
+async function exportBagLoadsCsv() {
+  const params = {};
+  const date = document.getElementById('bl-date').value;
+  if (date) params.date_key = date;
+  const rows = await fetchAllForExport('/bag-loads', params);
+  downloadCsv(`chegada-certa_cargas-de-malote_${todayLocalDateStr()}.csv`, [
+    { label: 'Data', value: (r) => r.date_key },
+    { label: 'Base', value: (r) => r.base },
+    { label: 'Malotes carregados', value: (r) => r.loaded_bags },
+    { label: 'Operador', value: (r) => r.operator_email || '' },
+    { label: 'Atualizado em', value: (r) => fmtDT(r.updated_at) },
+  ], rows);
+}
+
+async function exportFleetCsv() {
+  const params = {};
+  const date = document.getElementById('fl-date').value;
+  if (date) params.date_key = date;
+  const rows = await fetchAllForExport('/fleet-schedules', params);
+  downloadCsv(`chegada-certa_escala-da-frota_${todayLocalDateStr()}.csv`, [
+    { label: 'Data', value: (r) => r.date_key },
+    { label: 'Placa', value: (r) => r.plate },
+    { label: 'Operador', value: (r) => r.operator_email || '' },
+    { label: 'Atualizado em', value: (r) => fmtDT(r.updated_at) },
+  ], rows);
+}
+
+async function exportBagEventsCsv() {
+  const rows = await fetchAllForExport('/bag-events', {});
+  downloadCsv(`chegada-certa_eventos-de-malote_${todayLocalDateStr()}.csv`, [
+    { label: 'Data', value: (e) => e.date_key || '' },
+    { label: 'Base', value: (e) => e.base || '' },
+    { label: 'Evento', value: (e) => e.event_type },
+    { label: 'Malotes antes', value: (e) => (e.previous_bags ?? '') },
+    { label: 'Malotes depois', value: (e) => (e.new_bags ?? '') },
+    { label: 'Operador', value: (e) => e.operator_email || '' },
+    { label: 'Ocorrido em', value: (e) => fmtDT(e.occurred_at) },
+  ], rows);
+}
+
 // ---------------------------------------------------------------- tabs
 
 document.querySelectorAll('nav.tabs button').forEach((btn) => {
@@ -56,20 +198,67 @@ async function loadOverview() {
   if (to) qs.set('to', to);
   const data = await api('/stats/overview?' + qs.toString());
   const byStatus = Object.fromEntries(data.byStatus.map((r) => [r.status, r]));
+  const onTime = byStatus.on_time?.n || 0;
+  const late = byStatus.late?.n || 0;
+  const early = byStatus.early?.n || 0;
+  const pontualidade = data.totalArrivals > 0 ? Math.round((onTime / data.totalArrivals) * 100) : null;
+  const pontualidadeClass = pontualidade == null ? '' : pontualidade >= 90 ? 'on_time' : pontualidade >= 75 ? 'early' : 'late';
+
   const cards = document.getElementById('ov-cards');
   cards.innerHTML = `
-    <div class="card"><div class="label">Total de chegadas</div><div class="value">${data.totalArrivals}</div></div>
-    <div class="card"><div class="label">No horário</div><div class="value on_time">${byStatus.on_time?.n || 0}</div></div>
-    <div class="card"><div class="label">Atrasadas</div><div class="value late">${byStatus.late?.n || 0}</div></div>
-    <div class="card"><div class="label">Adiantadas</div><div class="value early">${byStatus.early?.n || 0}</div></div>
-    <div class="card"><div class="label">Rotas em andamento</div><div class="value">${data.openRoutes}</div></div>
-    <div class="card"><div class="label">Chegadas com foto</div><div class="value">${data.photosCount}</div></div>
+    <div class="card highlight">
+      <div class="card-icon">🎯</div>
+      <div class="label">Taxa de pontualidade</div>
+      <div class="value ${pontualidadeClass}">${pontualidade == null ? '—' : pontualidade + '%'}</div>
+      <div class="sub">${onTime} de ${data.totalArrivals} chegadas no horário</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">📦</div>
+      <div class="label">Total de chegadas</div>
+      <div class="value">${data.totalArrivals}</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">✅</div>
+      <div class="label">No horário</div>
+      <div class="value on_time">${onTime}</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">⏰</div>
+      <div class="label">Atrasadas</div>
+      <div class="value late">${late}</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">⏱️</div>
+      <div class="label">Adiantadas</div>
+      <div class="value early">${early}</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🚚</div>
+      <div class="label">Rotas em andamento</div>
+      <div class="value">${data.openRoutes}</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">📷</div>
+      <div class="label">Chegadas com foto</div>
+      <div class="value">${data.photosCount}</div>
+    </div>
   `;
-  document.getElementById('ov-bases').innerHTML = data.byBase
-    .map(
-      (b) => `<tr><td>${b.base ?? '—'}</td><td>${b.n}</td><td>${b.late_n}</td><td>${Math.round(b.avg_dev || 0)}</td></tr>`
-    )
-    .join('');
+
+  const maxLate = Math.max(1, ...data.byBase.map((b) => b.late_n || 0));
+  document.getElementById('ov-bases').innerHTML = data.byBase.length
+    ? data.byBase
+        .map((b) => {
+          const rate = b.n > 0 ? Math.round((b.late_n / b.n) * 100) : 0;
+          const widthPct = Math.round((b.late_n / maxLate) * 100);
+          const sevClass = rate >= 40 ? 'crit' : rate >= 15 ? 'warn' : '';
+          return `<div class="bar-row">
+            <span class="bar-label" title="${b.base ?? '—'}">${b.base ?? '—'}</span>
+            <span class="bar-track"><span class="bar-fill ${sevClass}" style="width:${Math.max(widthPct, b.late_n > 0 ? 4 : 0)}%"></span></span>
+            <span class="bar-value">${b.late_n}/${b.n} (${rate}%)</span>
+          </div>`;
+        })
+        .join('')
+    : '<p class="empty">Nenhuma chegada registrada no período.</p>';
 }
 
 // ---------------------------------------------------------------- routes
@@ -218,9 +407,13 @@ async function openArrivalDetail(id) {
       <div class="field"><label>Desvio</label><span class="value">${fmtDev(a.deviation_minutes)} — <span class="pill ${a.status}">${statusLabel(a.status)}</span></span></div>
       <div class="field"><label>Base aberta na chegada?</label><span class="value">${a.base_open_on_arrival == null ? '—' : a.base_open_on_arrival ? 'sim' : 'não'}</span></div>
       <div class="field"><label>Motivo do atraso p/ descarga</label><span class="value">${a.unloading_delay_reason || '—'}</span></div>
-      <div class="field"><label>Malotes coletados</label><span class="value">${a.collected_bags ?? '—'}</span></div>
+      <div class="field"><label>Sacas</label><span class="value">${a.collected_bags ?? '—'}</span></div>
       <div class="field"><label>Saída do hub</label><span class="value">${fmtDT(a.hub_departed_at)}</span></div>
       <div class="field"><label>Tempo de viagem</label><span class="value">${a.travel_minutes != null ? a.travel_minutes + ' min' : '—'}</span></div>
+      <div class="field"><label>Início do descarregamento</label><span class="value">${fmtDT(a.unloading_started_at)}</span></div>
+      <div class="field"><label>Fim do descarregamento</label><span class="value">${fmtDT(a.unloading_completed_at)}</span></div>
+      <div class="field"><label>Tempo de espera</label><span class="value">${a.waiting_minutes != null ? a.waiting_minutes + ' min' : '—'}</span></div>
+      <div class="field"><label>Tempo de descarregamento</label><span class="value">${a.unloading_minutes != null ? a.unloading_minutes + ' min' : '—'}</span></div>
       <div class="field"><label>GPS na chegada</label><span class="value">${a.latitude ? `${a.latitude.toFixed(5)}, ${a.longitude.toFixed(5)} (±${Math.round(a.accuracy_meters || 0)}m)` : '—'}</span></div>
       <div class="field"><label>Notas</label><span class="value">${a.notes || '—'}</span></div>
     </div>
@@ -331,25 +524,44 @@ async function submitFleet() {
 
 // ---------------------------------------------------------------- driver link
 
+// Devolve a data de hoje no fuso do navegador, no formato yyyy-mm-dd (pro <input type="date">).
+function todayLocalDateStr() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 async function createDriverRoute() {
   const bases = document
     .getElementById('dl-bases')
     .value.split('\n')
     .map((b) => b.trim())
     .filter(Boolean);
+  const dateStr = document.getElementById('dl-date').value;
   const body = {
     driver_name: document.getElementById('dl-driver').value,
     plate: document.getElementById('dl-plate').value,
     notes: document.getElementById('dl-notes').value,
     bases,
   };
+  if (!dateStr) return alert('Selecione a data em que esta programação é válida.');
   if (!body.driver_name || !body.plate) return alert('Preencha motorista e placa.');
   if (bases.length === 0) return alert('Informe ao menos uma base a visitar (uma por linha).');
+  // Mantém a data escolhida (o "dia de validade" da rota) e usa o horário atual só como
+  // referência de quando a rota foi lançada — é a data que decide "uma rota por placa por dia".
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  body.started_at = `${dateStr}T${hh}:${mm}:${ss}`;
   try {
     const route = await api('/routes', { method: 'POST', body: JSON.stringify(body) });
     const roteiro = ['HUB PRINCIPAL', ...bases].join(' → ');
+    const [ry, rm, rd] = dateStr.split('-');
     document.getElementById('dl-result').innerHTML = `
-      <p>✅ Rota #${route.id} lançada para a placa <strong>${route.plate}</strong>.</p>
+      <p>✅ Rota #${route.id} lançada para a placa <strong>${route.plate}</strong>, válida para o dia <strong>${rd}/${rm}/${ry}</strong>.</p>
       <p class="muted">Roteiro: ${roteiro}</p>
       <p>Peça ao motorista para abrir <code>${location.origin}/driver.html</code> no celular e digitar a placa
         <strong>${route.plate}</strong> — a rota aparece automaticamente, sem precisar de link exclusivo.</p>
@@ -358,6 +570,7 @@ async function createDriverRoute() {
     document.getElementById('dl-plate').value = '';
     document.getElementById('dl-bases').value = '';
     document.getElementById('dl-notes').value = '';
+    document.getElementById('dl-date').value = todayLocalDateStr();
   } catch (e) {
     alert(e.message);
   }
@@ -564,3 +777,4 @@ function closeModal() {
 
 populateBases();
 loadOverview();
+if (document.getElementById('dl-date')) document.getElementById('dl-date').value = todayLocalDateStr();
